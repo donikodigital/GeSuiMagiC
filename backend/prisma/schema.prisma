@@ -1,0 +1,642 @@
+// ============================================================================
+// SCHEMA PRISMA - Plateforme de gestion financiere et de suivi de chantier
+// v1.0 - Voir cahier des charges pour le detail des regles metier
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  SUPERADMIN
+  CLIENT
+  SUPERVISOR
+}
+
+enum UserStatus {
+  INVITED // email envoye, premiere connexion pas encore effectuee
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum ProjectStatus {
+  DRAFT
+  PLANNED
+  ACTIVE
+  SUSPENDED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProjectSupervisorStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  MOBILE_MONEY
+  CHECK
+  OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// Statut de paiement du FOURNISSEUR (n'affecte jamais le solde du chantier,
+// qui est deduit des que la depense est APPROVED). Sert uniquement au suivi
+// du "reste a payer" aux fournisseurs / main-d'oeuvre.
+enum ExpensePaymentStatus {
+  PAID_FULL // paye totalement
+  PARTIAL // acompte / avance verse, solde du restant
+  CREDIT // a credit / differe, rien verse au fournisseur
+}
+
+enum AnomalyStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  REJECTED
+}
+
+enum NotificationType {
+  ACCOUNT_INVITATION
+  PASSWORD_RESET
+  DEPOSIT_CREATED
+  DEPOSIT_APPROVED
+  DEPOSIT_REJECTED
+  EXPENSE_CREATED
+  EXPENSE_PENDING_APPROVAL
+  EXPENSE_APPROVED
+  EXPENSE_REJECTED
+  LOW_BALANCE_ALERT
+  BUDGET_EXCEEDED_ALERT
+  LARGE_EXPENSE_ALERT
+  ADMIN_CORRECTION
+  ANOMALY_REPORTED
+  ANOMALY_UPDATED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE_SOFT
+  APPROVE
+  REJECT
+  CANCEL
+  LOGIN
+  LOGOUT
+  PASSWORD_CHANGE
+  ADMIN_CORRECTION
+}
+
+enum SettingScope {
+  GLOBAL
+  PROJECT
+}
+
+// ----------------------------------------------------------------------------
+// UTILISATEURS
+// ----------------------------------------------------------------------------
+
+model User {
+  id                     String     @id @default(uuid())
+  email                  String     @unique
+  passwordHash           String?
+  role                   UserRole
+  status                 UserStatus @default(INVITED)
+
+  // Invitation / premiere connexion securisee (pas de mot de passe en clair par email)
+  invitationTokenHash    String?
+  invitationTokenExpiresAt DateTime?
+
+  // Reset mot de passe
+  resetTokenHash         String?
+  resetTokenExpiresAt    DateTime?
+
+  // Refresh token courant (hash uniquement)
+  refreshTokenHash       String?
+
+  lastLoginAt            DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  clientProfile          ClientProfile?
+  supervisorProfile      SupervisorProfile?
+
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  createdAttachments     Attachment[]        @relation("AttachmentUploadedBy")
+  approvedDeposits       Deposit[]           @relation("DepositApprovedBy")
+  createdDeposits        Deposit[]           @relation("DepositCreatedBy")
+  createdExpenses        Expense[]           @relation("ExpenseCreatedBy")
+  approvedExpenses       Expense[]           @relation("ExpenseApprovedBy")
+  financialCorrections   FinancialCorrection[] @relation("CorrectionAuthor")
+  reportedAnomalies      Anomaly[]           @relation("AnomalyReportedBy")
+
+  @@index([role])
+  @@map("users")
+}
+
+model ClientProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  firstName      String
+  lastName       String
+  phone          String?
+  profession     String?
+  address        String?
+  city           String?
+  country        String?
+
+  companyName    String?
+  companyAddress String?
+  taxId          String? // numero d'identification fiscale / registre de commerce (v2)
+
+  isActive       Boolean  @default(true) // suspension par le superadmin
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  projects       Project[]
+  supervisors    SupervisorProfile[]
+  deposits       Deposit[]
+  anomalies      Anomaly[]
+
+  @@index([lastName, firstName])
+  @@map("client_profiles")
+}
+
+model SupervisorProfile {
+  id                String                   @id @default(uuid())
+  userId            String                   @unique
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId          String
+  client            ClientProfile            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  firstName         String
+  lastName           String
+  address           String?
+  profession        String?
+  phone             String?
+  photoUrl          String?
+  idDocumentUrl     String?
+  notes             String?
+
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  projectAssignments ProjectSupervisor[]
+  deposits          Deposit[]                @relation("DepositSupervisor")
+  expenses          Expense[]
+
+  @@index([clientId])
+  @@map("supervisor_profiles")
+}
+
+// ----------------------------------------------------------------------------
+// PROJETS / CHANTIERS
+// ----------------------------------------------------------------------------
+
+model Project {
+  id                        String        @id @default(uuid())
+  clientId                  String
+  client                    ClientProfile @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  name                      String
+  description               String?
+  motif                     String?
+  constructionType          String?
+  location                  String?
+  city                      String?
+  country                   String?
+  surfaceArea               Decimal?      @db.Decimal(14, 2)
+  roomCount                 Int?
+  projectType                String? // T2, T3, T4, T5, villa personnalisee...
+
+  startDate                 DateTime?
+  endDate                   DateTime?
+  estimatedDurationDays     Int?
+
+  estimatedCost             Decimal?      @db.Decimal(18, 2)
+  budget                    Decimal       @db.Decimal(18, 2)
+  currency                  String        @default("GNF")
+
+  status                    ProjectStatus @default(DRAFT)
+
+  // Regle metier: seuil configurable par projet (section 19 + demande client)
+  // En dessous : validation automatique de la depense. Au-dessus : confirmation client obligatoire.
+  autoApproveExpenses       Boolean       @default(true)
+  expenseApprovalThreshold  Decimal       @default(5000000) @db.Decimal(18, 2)
+
+  // Progression globale (0-100), mise a jour manuelle ou via etapes (v2)
+  progressPercent           Int           @default(0)
+
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+  archivedAt                DateTime?
+
+  wallet                    Wallet?
+  supervisors                ProjectSupervisor[]
+  deposits                  Deposit[]
+  expenses                  Expense[]
+  budgets                   Budget[]
+  attachments                Attachment[]
+  anomalies                 Anomaly[]
+  settings                  Setting[]
+
+  @@index([clientId])
+  @@index([status])
+  @@map("projects")
+}
+
+model ProjectSupervisor {
+  id            String                   @id @default(uuid())
+  projectId     String
+  project       Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supervisorId  String
+  supervisor    SupervisorProfile        @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+
+  status        ProjectSupervisorStatus  @default(ACTIVE)
+  assignedAt    DateTime                 @default(now())
+  revokedAt     DateTime?
+
+  @@unique([projectId, supervisorId])
+  @@index([supervisorId])
+  @@map("project_supervisors")
+}
+
+// ----------------------------------------------------------------------------
+// PORTEFEUILLE FINANCIER (WALLET)
+//
+// IMPORTANT (regle 51 du cahier des charges) : ces champs sont un CACHE
+// recalcule de maniere transactionnelle a chaque depot/depense valide(e).
+// La verite est toujours : SUM(deposits APPROVED) - SUM(expenses APPROVED).
+// wallets.service.ts expose recompute() qui peut regenerer ce cache a partir
+// des tables Deposit/Expense en cas de doute (reconciliation).
+// ----------------------------------------------------------------------------
+
+model Wallet {
+  id             String   @id @default(uuid())
+  projectId      String   @unique
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  totalDeposited Decimal  @default(0) @db.Decimal(18, 2)
+  totalSpent     Decimal  @default(0) @db.Decimal(18, 2)
+  balance        Decimal  @default(0) @db.Decimal(18, 2)
+  currency       String   @default("GNF")
+
+  updatedAt      DateTime @updatedAt
+
+  @@map("wallets")
+}
+
+// ----------------------------------------------------------------------------
+// DEPOTS
+// ----------------------------------------------------------------------------
+
+model Deposit {
+  id              String         @id @default(uuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  clientId        String
+  client          ClientProfile  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  supervisorId    String
+  supervisor      SupervisorProfile @relation("DepositSupervisor", fields: [supervisorId], references: [id], onDelete: Restrict)
+
+  amount          Decimal        @db.Decimal(18, 2)
+  currency        String         @default("GNF")
+  date            DateTime       @default(now())
+  motif           String?
+  paymentMethod   PaymentMethod  @default(BANK_TRANSFER)
+  reference       String?
+  observation     String?
+
+  status          DepositStatus  @default(PENDING)
+  rejectionReason String?
+
+  createdById     String
+  createdBy       User           @relation("DepositCreatedBy", fields: [createdById], references: [id])
+  approvedById    String?
+  approvedBy      User?          @relation("DepositApprovedBy", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+
+  // Verrouillage financier (section 15) : une fois APPROVED, plus aucune
+  // modification directe n'est permise en dehors d'une FinancialCorrection.
+  isLocked        Boolean        @default(false)
+
+  attachments     Attachment[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([projectId, status])
+  @@index([supervisorId])
+  @@map("deposits")
+}
+
+// ----------------------------------------------------------------------------
+// CATALOGUE (categories, materiaux, unites)
+// ----------------------------------------------------------------------------
+
+model ExpenseCategory {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  group      String? // regroupement visuel: "Agregats", "Ciment", "Main-d'oeuvre"...
+  isActive   Boolean  @default(true)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  materials  Material[]
+  expenses   Expense[]
+  budgets    Budget[]
+
+  @@map("expense_categories")
+}
+
+model Material {
+  id          String           @id @default(uuid())
+  name        String
+  categoryId  String
+  category    ExpenseCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  defaultUnitId String?
+  defaultUnit Unit?            @relation(fields: [defaultUnitId], references: [id])
+  isActive    Boolean          @default(true)
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  expenses    Expense[]
+
+  @@unique([name, categoryId])
+  @@map("materials")
+}
+
+model Unit {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  symbol    String?
+  isActive  Boolean    @default(true)
+
+  materials Material[]
+
+  @@map("units")
+}
+
+// ----------------------------------------------------------------------------
+// DEPENSES
+// ----------------------------------------------------------------------------
+
+model Expense {
+  id                  String                @id @default(uuid())
+  projectId           String
+  project             Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  supervisorId        String
+  supervisor          SupervisorProfile     @relation(fields: [supervisorId], references: [id], onDelete: Restrict)
+
+  date                DateTime              @default(now())
+  categoryId          String
+  category            ExpenseCategory       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  materialId          String?
+  material            Material?             @relation(fields: [materialId], references: [id])
+
+  label               String
+  quantity            Decimal               @db.Decimal(14, 3)
+  unit                String
+  unitPrice           Decimal               @db.Decimal(18, 2)
+  // total = quantity * unitPrice, TOUJOURS recalcule et verifie cote backend
+  total               Decimal               @db.Decimal(18, 2)
+
+  observation         String?
+  supplier            String?
+  invoiceReference    String?
+
+  status              ExpenseStatus         @default(DRAFT)
+  rejectionReason     String?
+
+  // Suivi du reste a payer au fournisseur (n'affecte jamais le solde du chantier)
+  paymentStatus       ExpensePaymentStatus  @default(PAID_FULL)
+  amountPaidToSupplier Decimal              @default(0) @db.Decimal(18, 2)
+  // balanceDueToSupplier = total - amountPaidToSupplier, expose calcule en service
+
+  createdById         String
+  createdBy           User                  @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  approvedById        String?
+  approvedBy          User?                 @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  approvedAt          DateTime?
+
+  isLocked            Boolean               @default(false)
+
+  attachments         Attachment[]
+
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([projectId, status])
+  @@index([supervisorId])
+  @@index([categoryId])
+  @@map("expenses")
+}
+
+// ----------------------------------------------------------------------------
+// BUDGETS PREVISIONNELS PAR CATEGORIE
+// ----------------------------------------------------------------------------
+
+model Budget {
+  id          String          @id @default(uuid())
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amount      Decimal         @db.Decimal(18, 2)
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([projectId, categoryId])
+  @@map("budgets")
+}
+
+// ----------------------------------------------------------------------------
+// PIECES JOINTES (stockage objet separe de la DB : on ne stocke que l'URL/meta)
+// ----------------------------------------------------------------------------
+
+model Attachment {
+  id           String    @id @default(uuid())
+  fileName     String
+  fileUrl      String
+  mimeType     String
+  fileSizeBytes Int
+
+  // rattachement polymorphe simple : soit a un projet, soit a un depot, soit a une depense
+  projectId    String?
+  project      Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  depositId    String?
+  deposit      Deposit?  @relation(fields: [depositId], references: [id], onDelete: Cascade)
+  expenseId    String?
+  expense      Expense?  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  kind         String    @default("document") // photo | facture | recu | bon_livraison | document
+
+  uploadedById String
+  uploadedBy   User      @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  createdAt    DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([depositId])
+  @@index([expenseId])
+  @@map("attachments")
+}
+
+// ----------------------------------------------------------------------------
+// CORRECTIONS ADMINISTRATIVES (section 16/53)
+// Ne remplace jamais une valeur : cree une nouvelle ligne d'historique.
+// ----------------------------------------------------------------------------
+
+model FinancialCorrection {
+  id                    String   @id @default(uuid())
+  entityType            String // "Deposit" | "Expense"
+  entityId              String
+
+  oldValue              Decimal  @db.Decimal(18, 2)
+  newValue              Decimal  @db.Decimal(18, 2)
+  reason                String
+
+  correctedById         String
+  correctedBy           User     @relation("CorrectionAuthor", fields: [correctedById], references: [id])
+
+  createdAt             DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("financial_corrections")
+}
+
+// ----------------------------------------------------------------------------
+// ANOMALIES (signalement client -> superadmin)
+// ----------------------------------------------------------------------------
+
+model Anomaly {
+  id           String        @id @default(uuid())
+  projectId    String
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientId     String
+  client       ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  reportedById String
+  reportedBy   User          @relation("AnomalyReportedBy", fields: [reportedById], references: [id])
+
+  category     String // depense_inconnue | montant_incorrect | doublon | justificatif_absent | materiau_suspect | autre
+  relatedExpenseId String?
+  description  String
+
+  status       AnomalyStatus @default(OPEN)
+  resolutionNote String?
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([projectId, status])
+  @@map("anomalies")
+}
+
+// ----------------------------------------------------------------------------
+// JOURNAL D'AUDIT (inviolable, jamais modifiable par les utilisateurs standards)
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id           String       @id @default(uuid())
+  userId       String?
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userRole     UserRole?
+
+  action       AuditAction
+  entityType   String
+  entityId     String?
+
+  oldValue     Json?
+  newValue     Json?
+
+  reason       String?
+  ipAddress    String?
+  userAgent    String?
+
+  createdAt    DateTime     @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ----------------------------------------------------------------------------
+// NOTIFICATIONS
+// ----------------------------------------------------------------------------
+
+model Notification {
+  id        String            @id @default(uuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean           @default(false)
+  emailSent Boolean           @default(false)
+  meta      Json?
+
+  createdAt DateTime          @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ----------------------------------------------------------------------------
+// PARAMETRES (globaux ou par projet)
+// ----------------------------------------------------------------------------
+
+model Setting {
+  id        String       @id @default(uuid())
+  key       String
+  value     Json
+  scope     SettingScope @default(GLOBAL)
+
+  projectId String?
+  project   Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime     @updatedAt
+
+  @@unique([key, projectId])
+  @@map("settings")
+}
