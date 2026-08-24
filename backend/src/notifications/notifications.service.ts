@@ -1,7 +1,8 @@
+//backend/src/notifications/notifications.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NotificationType, Prisma } from '@prisma/client';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface SendNotificationInput {
@@ -16,23 +17,39 @@ export interface SendNotificationInput {
 
 /**
  * Centralise toutes les notifications (section 41/67).
+ * Emails envoyes via SMTP (Gmail par defaut - voir README pour la
+ * configuration d'un mot de passe d'application Google). Le transport est
+ * generique : n'importe quel serveur SMTP standard (Gmail, Outlook,
+ * SendGrid, Mailgun...) fonctionne en changeant simplement SMTP_HOST/PORT.
+ *
  * Principe : l'echec d'envoi d'email ne doit JAMAIS faire echouer l'operation
  * metier qui le declenche (ex: une depense doit rester validee meme si
- * Resend est indisponible). On logue l'echec et on marque emailSent=false.
+ * l'envoi d'email echoue). On logue l'echec et on marque emailSent=false.
  */
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly resend: Resend | null;
+  private readonly transporter: nodemailer.Transporter | null;
   private readonly fromEmail: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
-    const apiKey = this.config.get<string>('resend.apiKey');
-    this.resend = apiKey ? new Resend(apiKey) : null;
-    this.fromEmail = this.config.get<string>('resend.fromEmail')!;
+    const user = this.config.get<string>('smtp.user');
+    const password = this.config.get<string>('smtp.password');
+    this.fromEmail = this.config.get<string>('smtp.fromEmail')!;
+
+    if (user && password) {
+      this.transporter = nodemailer.createTransport({
+        host: this.config.get<string>('smtp.host'),
+        port: this.config.get<number>('smtp.port'),
+        secure: this.config.get<boolean>('smtp.secure'),
+        auth: { user, pass: password },
+      });
+    } else {
+      this.transporter = null;
+    }
   }
 
   async send(input: SendNotificationInput): Promise<void> {
@@ -52,12 +69,12 @@ export class NotificationsService {
       const user = await this.prisma.user.findUnique({ where: { id: input.userId }, select: { email: true } });
       if (!user) return;
 
-      if (!this.resend) {
-        this.logger.warn(`RESEND_API_KEY absent - email non envoye (type=${input.type}, to=${user.email})`);
+      if (!this.transporter) {
+        this.logger.warn(`SMTP_USER/SMTP_PASSWORD absents - email non envoye (type=${input.type}, to=${user.email})`);
         return;
       }
 
-      await this.resend.emails.send({
+      await this.transporter.sendMail({
         from: this.fromEmail,
         to: user.email,
         subject: input.emailSubject ?? input.title,

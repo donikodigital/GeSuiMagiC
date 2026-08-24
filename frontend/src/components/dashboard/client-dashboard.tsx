@@ -1,15 +1,23 @@
+//frontend/src/components/dashboard/client-dashboard.tsx
+// ============================================================================
+// client-dashboard.tsx - v2.0
+// Le DashboardHero remplace les 4 StatCard du haut : le solde disponible
+// consolide devient la valeur "grand format" (avec oeil pour le masquer),
+// budget/verse/depense passent en puces secondaires. Cartes chantiers
+// affinees (hover, coins plus arrondis) mais logique inchangee.
+// ============================================================================
+
 'use client';
 
 import Link from 'next/link';
-import { Plus, ArrowRight } from 'lucide-react';
+import { ArrowRight, Plus } from 'lucide-react';
 import { useProjects } from '@/hooks/use-projects';
-import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageSpinner, EmptyState, ErrorState } from '@/components/ui/misc';
 import { StatusBadge } from '@/components/ui/badge';
-import { formatMoney } from '@/lib/format';
-import { projectStatusMeta } from '@/lib/format';
+import { formatMoney, projectStatusMeta } from '@/lib/format';
+import { DashboardHero } from './dashboard-hero';
 
 export function ClientDashboard() {
   const { data, isLoading, isError } = useProjects({ limit: 100 });
@@ -32,26 +40,24 @@ export function ClientDashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Budget total" value={formatMoney(totals.budget, currency)} />
-        <StatCard label="Total verse" value={formatMoney(totals.deposited, currency)} />
-        <StatCard label="Total depense" value={formatMoney(totals.spent, currency)} />
-        <StatCard
-          label="Solde disponible"
-          value={formatMoney(totals.balance, currency)}
-          tone={totals.balance < 0 ? 'clay' : totals.balance < totals.budget * 0.1 ? 'safety' : 'moss'}
-        />
-      </div>
+      <DashboardHero
+        eyebrow="Tableau de bord · Client"
+        title="Vos chantiers en un coup d'oeil"
+        subtitle="Solde consolide sur l'ensemble de vos projets."
+        primaryLabel="Solde disponible"
+        primaryValue={formatMoney(totals.balance, currency)}
+        primaryTone={totals.balance < 0 ? 'negative' : 'default'}
+        maskable
+        stats={[
+          { label: 'Budget total', value: formatMoney(totals.budget, currency) },
+          { label: 'Total verse', value: formatMoney(totals.deposited, currency), tone: 'positive' },
+          { label: 'Total depense', value: formatMoney(totals.spent, currency) },
+        ]}
+        actions={[{ label: 'Nouveau projet', href: '/projects/new', icon: Plus }]}
+      />
 
       <div>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold text-ink-900">Vos chantiers</h2>
-          <Link href="/projects/new">
-            <Button size="sm">
-              <Plus className="h-4 w-4" /> Nouveau projet
-            </Button>
-          </Link>
-        </div>
+        <h2 className="mb-4 font-display text-lg font-semibold text-ink-900">Vos chantiers</h2>
 
         {projects.length === 0 ? (
           <EmptyState
@@ -73,7 +79,7 @@ export function ClientDashboard() {
               const usedPct = budget > 0 ? Math.min(100, (parseFloat(project.wallet?.totalSpent ?? '0') / budget) * 100) : 0;
               return (
                 <Link key={project.id} href={`/projects/${project.id}`}>
-                  <Card className="h-full transition-shadow hover:shadow-md">
+                  <Card className="h-full rounded-2xl transition-all hover:-translate-y-0.5 hover:shadow-md">
                     <CardContent className="space-y-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>

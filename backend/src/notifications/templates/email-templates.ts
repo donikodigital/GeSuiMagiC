@@ -1,5 +1,6 @@
+//backend/src/notifications/templates/email-templates.ts
 /**
- * Templates HTML minimalistes mais professionnels pour Resend.
+ * Templates HTML minimalistes mais professionnels pour l'envoi par email.
  * Un seul layout de base pour garder une identite visuelle coherente.
  */
 

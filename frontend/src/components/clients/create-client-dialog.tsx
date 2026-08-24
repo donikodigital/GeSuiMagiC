@@ -1,3 +1,4 @@
+//frontend/src/components/clients/create-client-dialog.tsx
 'use client';
 
 import { useForm } from 'react-hook-form';

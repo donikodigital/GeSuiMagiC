@@ -1,3 +1,4 @@
+//backend/src/config/configuration.ts
 export default () => ({
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '4000', 10),
@@ -21,9 +22,13 @@ export default () => ({
     tokenExpiresInHours: parseInt(process.env.INVITATION_TOKEN_EXPIRES_IN_HOURS || '48', 10),
   },
 
-  resend: {
-    apiKey: process.env.RESEND_API_KEY,
-    fromEmail: process.env.RESEND_FROM_EMAIL || 'Chantier <notifications@example.com>',
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '465', 10),
+    secure: (process.env.SMTP_SECURE ?? 'true') === 'true',
+    user: process.env.SMTP_USER,
+    password: process.env.SMTP_PASSWORD,
+    fromEmail: process.env.SMTP_FROM_EMAIL || 'Suivi de Chantier <notifications@example.com>',
   },
 
   storage: {
