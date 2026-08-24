@@ -1,3 +1,4 @@
+//frontend/src/services/auth.service.ts
 import { api } from '@/lib/api-client';
 import type { CurrentUser } from '@/types/models';
 

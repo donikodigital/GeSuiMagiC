@@ -36,7 +36,7 @@ export function SupervisorDashboard() {
   const currency = projects[0]?.currency ?? 'GNF';
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl space-y-8">
       <DashboardHero
         eyebrow="Tableau de bord · Superviseur"
         title="Vos chantiers affectes"
