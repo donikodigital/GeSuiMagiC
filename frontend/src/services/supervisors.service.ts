@@ -1,3 +1,4 @@
+//frontend/src/services/supervisors.service.ts
 import { api } from '@/lib/api-client';
 import type { PaginatedResponse, SupervisorProfile } from '@/types/models';
 

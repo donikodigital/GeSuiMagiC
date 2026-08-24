@@ -1,10 +1,10 @@
 //frontend/src/components/dashboard/supervisor-dashboard.tsx
 // ============================================================================
-// supervisor-dashboard.tsx - v2.0
-// Le superviseur ne detient pas de solde propre : le hero met en avant le
-// nombre de chantiers affectes (grand format) plutot qu'un montant fictif,
-// avec le budget total suivi en puce secondaire. Cartes chantiers inchangees
-// dans leur logique, juste alignees visuellement sur le nouveau style.
+// supervisor-dashboard.tsx - v2.2
+// Le solde disponible (somme des soldes des chantiers affectes) devient la
+// valeur principale grand format, alignee sur Superadmin/Client. Chantiers
+// affectes et Chantiers actifs passent tous deux en puces secondaires, sur
+// la meme ligne (comportement deja force par dashboard-hero v1.2).
 // ============================================================================
 
 'use client';
@@ -32,7 +32,7 @@ export function SupervisorDashboard() {
   }
 
   const activeCount = projects.filter((p) => p.status === 'ACTIVE').length;
-  const totalBudget = projects.reduce((sum, p) => sum + parseFloat(p.budget), 0);
+  const totalBalance = projects.reduce((sum, p) => sum + parseFloat(p.wallet?.balance ?? '0'), 0);
   const currency = projects[0]?.currency ?? 'GNF';
 
   return (
@@ -41,11 +41,13 @@ export function SupervisorDashboard() {
         eyebrow="Tableau de bord · Superviseur"
         title="Vos chantiers affectes"
         subtitle="Enregistrez les depenses au fil de l'avancement des travaux."
-        primaryLabel="Chantiers affectes"
-        primaryValue={String(projects.length)}
+        primaryLabel="Solde disponible"
+        primaryValue={formatMoney(totalBalance, currency)}
+        primaryTone={totalBalance < 0 ? 'negative' : 'default'}
+        maskable
         stats={[
+          { label: 'Chantiers affectes', value: String(projects.length) },
           { label: 'Chantiers actifs', value: String(activeCount), tone: 'positive' },
-          { label: 'Budget total suivi', value: formatMoney(totalBudget, currency) },
         ]}
       />
 

@@ -1,3 +1,4 @@
+//frontend/src/app/(app)/projects/[id]/deposits/new/page.tsx
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';

@@ -1,3 +1,4 @@
+//frontend/src/services/catalog.service.ts
 import { api } from '@/lib/api-client';
 import type { ExpenseCategory, Material, Unit } from '@/types/models';
 

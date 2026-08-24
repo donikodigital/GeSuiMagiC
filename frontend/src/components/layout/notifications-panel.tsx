@@ -1,3 +1,4 @@
+//frontend/src/components/layout/notifications-panel.tsx
 'use client';
 
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';

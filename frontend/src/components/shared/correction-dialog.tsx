@@ -1,3 +1,4 @@
+//frontend/src/components/shared/correction-dialog.tsx
 'use client';
 
 import * as React from 'react';

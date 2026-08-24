@@ -1,3 +1,4 @@
+//frontend/src/services/audit.service.ts
 import { api } from '@/lib/api-client';
 import type { AuditLogEntry, PaginatedResponse } from '@/types/models';
 

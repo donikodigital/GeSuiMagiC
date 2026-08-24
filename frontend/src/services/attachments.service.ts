@@ -1,3 +1,4 @@
+//frontend/src/services/attachments.service.ts
 import { api } from '@/lib/api-client';
 import type { Attachment } from '@/types/models';
 

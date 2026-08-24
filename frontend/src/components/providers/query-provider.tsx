@@ -1,3 +1,4 @@
+//frontend/src/components/providers/query-provider.tsx
 'use client';
 
 import * as React from 'react';

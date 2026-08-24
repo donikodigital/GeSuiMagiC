@@ -1,3 +1,4 @@
+//frontend/src/app/(app)/projects/[id]/expenses/[expenseId]/page.tsx
 'use client';
 
 import * as React from 'react';

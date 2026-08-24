@@ -1,3 +1,4 @@
+//frontend/src/components/shared/require-role.tsx
 'use client';
 
 import * as React from 'react';

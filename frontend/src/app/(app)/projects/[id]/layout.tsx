@@ -1,3 +1,17 @@
+//frontend/src/app/(app)/projects/[id]/layout.tsx
+// ============================================================================
+// app/(app)/projects/[id]/layout.tsx - v1.1
+// Le bloc titre/badge/localisation/solde passe dans une mini-hero navy/or,
+// coherente avec les DashboardHero des tableaux de bord. Toute la logique
+// (telechargement PDF/Excel, onglets, garde de chargement) est inchangee -
+// seul le balisage du bloc d'entete change.
+//
+// NOTE : Button variant="outline" et StatusBadge n'ont pas ete concus avec
+// un fond sombre en tete (je n'ai pas leur source). J'ai surcharge leurs
+// couleurs via className en supposant qu'elles fusionnent proprement -
+// verifie le rendu, en particulier le badge de statut sur le fond navy.
+// ============================================================================
+
 'use client';
 
 import Link from 'next/link';
@@ -51,31 +65,54 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
         <ArrowLeft className="h-4 w-4" /> Retour aux projets
       </Link>
 
-      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="font-display text-2xl font-semibold text-ink-900">{project.name}</h1>
-            <StatusBadge label={projectStatusMeta[project.status].label} tone={projectStatusMeta[project.status].tone} />
-          </div>
-          <p className="mt-1 text-sm text-ink-500">
-            {[project.location, project.city, project.country].filter(Boolean).join(', ') || 'Localisation non renseignee'}
-          </p>
-        </div>
+      <div className="relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-[#0B1330] via-[#122057] to-[#1B2E6E] px-5 py-5 sm:px-7 sm:py-6">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 160 160"
+          className="pointer-events-none absolute -right-6 -top-6 h-32 w-32 opacity-[0.08] sm:h-40 sm:w-40"
+        >
+          <circle cx="80" cy="80" r="64" fill="none" stroke="#E7D9AE" strokeWidth="1" strokeDasharray="2 6" />
+          <circle cx="80" cy="80" r="46" fill="none" stroke="#E7D9AE" strokeWidth="1" />
+        </svg>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-xs text-ink-400">Solde disponible</p>
-            <p className={cn('font-ledger text-lg font-semibold', balance < 0 ? 'text-clay-600' : 'text-ink-900')}>
-              {formatMoney(balance, project.currency)}
+        <div className="relative flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display text-xl font-semibold text-white sm:text-2xl">{project.name}</h1>
+              <StatusBadge label={projectStatusMeta[project.status].label} tone={projectStatusMeta[project.status].tone} />
+            </div>
+            <p className="mt-1 text-sm text-white/60">
+              {[project.location, project.city, project.country].filter(Boolean).join(', ') || 'Localisation non renseignee'}
             </p>
           </div>
-          <div className="flex gap-1.5">
-            <Button variant="outline" size="sm" onClick={() => handleDownload('pdf')} title="Exporter en PDF">
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => handleDownload('excel')} title="Exporter en Excel">
-              <FileSpreadsheet className="h-4 w-4" />
-            </Button>
+
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-white/50">Solde disponible</p>
+              <p className={cn('font-ledger text-xl font-bold sm:text-2xl', balance < 0 ? 'text-[#FFB4A2]' : 'text-white')}>
+                {formatMoney(balance, project.currency)}
+              </p>
+            </div>
+            <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-white hover:bg-white/10"
+                onClick={() => handleDownload('pdf')}
+                title="Exporter en PDF"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-white hover:bg-white/10"
+                onClick={() => handleDownload('excel')}
+                title="Exporter en Excel"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

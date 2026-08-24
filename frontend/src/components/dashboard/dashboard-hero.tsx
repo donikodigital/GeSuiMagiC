@@ -1,8 +1,12 @@
 // ============================================================================
 // frontend/src/components/dashboard/dashboard-hero.tsx - v1.1
-// Bandeau "hero" reutilisable pour les tableaux de bord (Superadmin/Client/Superviseur)
-// Design : navy + or, inspire de la page de connexion GeSuiMagiC et du wallet
-// Direct Transf'air (gros solde, oeil pour masquer, actions rapides)
+// ============================================================================
+// ============================================================================
+// dashboard-hero.tsx - v1.3
+// Les puces restent sur une seule ligne a TOUTES les tailles d'ecran
+// (avant, elles se remettaient a wrapper en 2+1 sur desktop a cause du
+// lg:flex qui annulait la grille mobile). Colonne droite elargie
+// (lg:w-80 -> lg:w-96) pour laisser respirer 3 puces sur la meme ligne.
 // ============================================================================
 
 'use client';
@@ -110,16 +114,16 @@ export function DashboardHero({
 
         {/* Colonne droite : puces + action, alignees a droite sur desktop */}
         {(stats.length > 0 || actions.length > 0) && (
-          <div className="flex flex-col gap-5 lg:w-80 lg:flex-shrink-0 lg:items-stretch lg:pt-1">
+          <div className="flex flex-col gap-5 lg:w-96 lg:flex-shrink-0 lg:items-stretch lg:pt-1">
             {stats.length > 0 && (
-              <div className="flex flex-wrap gap-2.5 lg:justify-end">
+              <div className="grid gap-2 sm:gap-2.5" style={{ gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }}>
                 {stats.map((stat) => (
                   <div
                     key={stat.label}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2 backdrop-blur-sm lg:min-w-[9.5rem]"
+                    className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-2.5 py-2 backdrop-blur-sm sm:px-3.5"
                   >
-                    <p className="text-[11px] uppercase tracking-wide text-white/45">{stat.label}</p>
-                    <p className={`font-ledger text-sm font-semibold ${STAT_TONE_CLASS[stat.tone ?? 'default']}`}>{stat.value}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-white/45 sm:text-[11px]">{stat.label}</p>
+                    <p className={`font-ledger text-xs font-semibold sm:text-sm ${STAT_TONE_CLASS[stat.tone ?? 'default']}`}>{stat.value}</p>
                   </div>
                 ))}
               </div>

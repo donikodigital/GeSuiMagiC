@@ -1,3 +1,4 @@
+//frontend/src/app/(app)/projects/[id]/documents/page.tsx
 'use client';
 
 import { useParams } from 'next/navigation';

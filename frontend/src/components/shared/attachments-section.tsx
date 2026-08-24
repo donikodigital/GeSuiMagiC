@@ -1,3 +1,4 @@
+//frontend/src/components/shared/attachments-section.tsx
 'use client';
 
 import * as React from 'react';

@@ -1,3 +1,20 @@
+// ============================================================================
+// backend/src/reports/reports.service.ts - v2.0
+// Refonte du PDF uniquement (l'Excel n'a pas ete touche) :
+// - Bandeau d'en-tete navy/or + identite du chantier en 2 colonnes
+// - Resume executif (4 cartes Budget/Verse/Depense/Solde) place EN HAUT,
+//   au lieu du recapitulatif texte perdu tout en bas
+// - Nouvelle section "Repartition par categorie" (budget vs reel), qui
+//   n'existait pas du tout - le modele Budget n'etait jamais interroge
+// - Tableau des transactions : colonne "Type" ajoutee (avant, seul le
+//   signe du montant distinguait un depot d'une depense), lignes zebrees,
+//   couleurs coherentes avec le reste de l'app
+// - Mention du nombre de depots/depenses encore PENDING (donc absents du
+//   rapport, qui ne reprend que les operations APPROVED) - evite qu'un
+//   rapport creux passe pour un bug
+// - Pied de page avec pagination "Page X / Y" (bufferPages + bufferedPageRange)
+// ============================================================================
+
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
@@ -12,8 +29,24 @@ interface ReportRow {
   quantity: string;
   unitPrice: string;
   total: string;
+  totalRaw: number;
   observation: string;
 }
+
+const COLOR = {
+  primary: '#0B1330',
+  gold: '#C9A24A',
+  moss: '#4a7c59',
+  mossLight: '#eaf3ec',
+  clay: '#b5533c',
+  clayLight: '#f6ece7',
+  safety: '#c07f1f',
+  ink: '#1f2937',
+  muted: '#6b7280',
+  border: '#e2ded1',
+  zebra: '#f7f5f0',
+  neutralLight: '#eef1f6',
+};
 
 @Injectable()
 export class ReportsService {
@@ -26,12 +59,15 @@ export class ReportsService {
     });
     if (!project) throw AppException.notFound('Projet');
 
-    const [deposits, expenses] = await Promise.all([
+    const [deposits, expenses, budgets, pendingDepositsCount, pendingExpensesCount] = await Promise.all([
       this.prisma.deposit.findMany({ where: { projectId, status: 'APPROVED' }, orderBy: { date: 'asc' } }),
       this.prisma.expense.findMany({ where: { projectId, status: 'APPROVED' }, include: { category: true }, orderBy: { date: 'asc' } }),
+      this.prisma.budget.findMany({ where: { projectId }, include: { category: true } }),
+      this.prisma.deposit.count({ where: { projectId, status: 'PENDING' } }),
+      this.prisma.expense.count({ where: { projectId, status: { in: ['PENDING', 'DRAFT'] } } }),
     ]);
 
-    return { project, deposits, expenses };
+    return { project, deposits, expenses, budgets, pendingDepositsCount, pendingExpensesCount };
   }
 
   private buildRows(deposits: any[], expenses: any[]): ReportRow[] {
@@ -43,6 +79,7 @@ export class ReportsService {
         quantity: '-',
         unitPrice: '-',
         total: `+${formatMoney(d.amount, d.currency)}`,
+        totalRaw: Number(d.amount),
         observation: d.observation || '',
       })),
       ...expenses.map((e) => ({
@@ -52,104 +89,273 @@ export class ReportsService {
         quantity: String(e.quantity),
         unitPrice: formatMoney(e.unitPrice, ''),
         total: `-${formatMoney(e.total, '')}`,
+        totalRaw: -Number(e.total),
         observation: e.observation || '',
       })),
     ];
     return rows.sort((a, b) => a.date.getTime() - b.date.getTime());
   }
 
+  private buildCategoryBreakdown(budgets: any[], expenses: any[]) {
+    const spentByCategory = new Map<string, number>();
+    for (const e of expenses) {
+      spentByCategory.set(e.categoryId, (spentByCategory.get(e.categoryId) ?? 0) + Number(e.total));
+    }
+
+    const rows = budgets.map((b) => ({
+      category: b.category?.name ?? 'Categorie',
+      budget: Number(b.amount),
+      spent: spentByCategory.get(b.categoryId) ?? 0,
+    }));
+
+    const budgetedIds = new Set(budgets.map((b) => b.categoryId));
+    const seenExtra = new Set<string>();
+    for (const e of expenses) {
+      if (!budgetedIds.has(e.categoryId) && !seenExtra.has(e.categoryId)) {
+        rows.push({ category: e.category?.name ?? 'Hors categorie', budget: 0, spent: spentByCategory.get(e.categoryId) ?? 0 });
+        seenExtra.add(e.categoryId);
+      }
+    }
+
+    return rows.sort((a, b) => b.spent - a.spent);
+  }
+
   // --------------------------------------------------------------------
   // PDF (section 38)
   // --------------------------------------------------------------------
   async generatePdf(projectId: string): Promise<{ buffer: Buffer; filename: string }> {
-    const { project, deposits, expenses } = await this.loadProjectData(projectId);
+    const { project, deposits, expenses, budgets, pendingDepositsCount, pendingExpensesCount } = await this.loadProjectData(projectId);
     const rows = this.buildRows(deposits, expenses);
+    const categoryRows = this.buildCategoryBreakdown(budgets, expenses);
 
-    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk) => chunks.push(chunk));
 
-    const pageWidth = doc.page.width - 80;
+    const marginX = 40;
+    const pageWidth = doc.page.width - marginX * 2;
+    const balance = Number(project.wallet?.balance ?? 0);
 
-    // --- En-tete ---
-    doc.fontSize(16).font('Helvetica-Bold').text('Suivi de Chantier - Rapport financier', { align: 'left' });
-    doc.moveDown(0.3);
-    doc.fontSize(10).font('Helvetica').fillColor('#444444');
-    doc.text(`Client : ${project.client.firstName} ${project.client.lastName}`);
-    doc.text(`Projet : ${project.name}`);
-    doc.text(`Localisation : ${[project.location, project.city, project.country].filter(Boolean).join(', ') || '-'}`);
-    doc.text(`Identifiant du projet : ${project.id}`);
-    doc.text(`Date de generation : ${new Date().toLocaleString('fr-FR')}`);
-    doc.fillColor('#000000');
-    doc.moveDown(1);
+    // ------------------------------------------------------------------
+    // Bandeau d'en-tete
+    // ------------------------------------------------------------------
+    doc.rect(0, 0, doc.page.width, 84).fill(COLOR.primary);
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(17).text('Suivi de Chantier', marginX, 22);
+    doc.fillColor(COLOR.gold).font('Helvetica-Bold').fontSize(9).text('RAPPORT FINANCIER DE CHANTIER', marginX, 44, { characterSpacing: 1 });
+    doc.fillColor('#ffffff').fillOpacity(0.55).font('Helvetica').fontSize(8);
+    doc.text(`Genere le ${new Date().toLocaleString('fr-FR')}`, marginX, 60);
+    doc.fillOpacity(1);
 
-    // --- Tableau ---
+    // ------------------------------------------------------------------
+    // Identite du chantier (2 colonnes)
+    // ------------------------------------------------------------------
+    let y = 104;
+    const col2X = marginX + pageWidth / 2;
+
+    const metaField = (label: string, value: string, x: number, atY: number) => {
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(COLOR.muted).text(label, x, atY, { characterSpacing: 0.5 });
+      doc.font('Helvetica').fontSize(11).fillColor(COLOR.ink).text(value, x, atY + 11);
+    };
+
+    metaField('CLIENT', `${project.client.firstName} ${project.client.lastName}`, marginX, y);
+    metaField('PROJET', project.name, col2X, y);
+    y += 36;
+    metaField('LOCALISATION', [project.location, project.city, project.country].filter(Boolean).join(', ') || '-', marginX, y);
+    metaField('STATUT', project.status, col2X, y);
+    y += 32;
+
+    doc.font('Helvetica').fontSize(7.5).fillColor(COLOR.muted).text(`Identifiant du projet : ${project.id}`, marginX, y);
+    y += 18;
+
+    // ------------------------------------------------------------------
+    // Resume executif (4 cartes)
+    // ------------------------------------------------------------------
+    const cardGap = 10;
+    const cardWidth = (pageWidth - cardGap * 3) / 4;
+    const cardHeight = 52;
+    const balanceLight = balance < 0 ? COLOR.clayLight : COLOR.mossLight;
+    const balanceColor = balance < 0 ? COLOR.clay : COLOR.moss;
+
+    const cards = [
+      { label: 'BUDGET', value: formatMoney(project.budget, project.currency), bg: COLOR.neutralLight, color: COLOR.primary },
+      { label: 'TOTAL VERSE', value: formatMoney(project.wallet?.totalDeposited ?? 0, project.currency), bg: COLOR.mossLight, color: COLOR.moss },
+      { label: 'TOTAL DEPENSE', value: formatMoney(project.wallet?.totalSpent ?? 0, project.currency), bg: COLOR.clayLight, color: COLOR.clay },
+      { label: 'SOLDE RESTANT', value: formatMoney(balance, project.currency), bg: balanceLight, color: balanceColor },
+    ];
+
+    cards.forEach((card, i) => {
+      const x = marginX + i * (cardWidth + cardGap);
+      doc.roundedRect(x, y, cardWidth, cardHeight, 6).fill(card.bg);
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(COLOR.muted).text(card.label, x + 8, y + 8, { width: cardWidth - 16 });
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(card.color).text(card.value, x + 8, y + 24, { width: cardWidth - 16 });
+    });
+    y += cardHeight + 10;
+
+    if (pendingDepositsCount > 0 || pendingExpensesCount > 0) {
+      const notes: string[] = [];
+      if (pendingDepositsCount > 0) notes.push(`${pendingDepositsCount} depot(s) en attente de validation`);
+      if (pendingExpensesCount > 0) notes.push(`${pendingExpensesCount} depense(s) en attente de validation`);
+      doc.font('Helvetica-Oblique').fontSize(8).fillColor(COLOR.safety);
+      doc.text(`Ce rapport ne reprend que les operations validees. ${notes.join(' - ')} ne figurent pas ci-dessous.`, marginX, y, {
+        width: pageWidth,
+      });
+      y = doc.y + 10;
+    }
+
+    doc.y = y;
+
+    // ------------------------------------------------------------------
+    // Repartition par categorie
+    // ------------------------------------------------------------------
+    if (categoryRows.length > 0) {
+      if (doc.y > doc.page.height - 160) doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(COLOR.ink).text('Repartition par categorie', marginX, doc.y);
+      doc.moveDown(0.5);
+
+      const catCols = [
+        { label: 'Categorie', width: pageWidth * 0.36 },
+        { label: 'Budget', width: pageWidth * 0.22 },
+        { label: 'Depense', width: pageWidth * 0.22 },
+        { label: '% consomme', width: pageWidth * 0.2 },
+      ];
+
+      const drawCatHeader = () => {
+        const hy = doc.y;
+        doc.rect(marginX, hy, pageWidth, 18).fill(COLOR.primary);
+        let cx = marginX + 6;
+        doc.font('Helvetica-Bold').fontSize(8).fillColor('#ffffff');
+        for (const c of catCols) {
+          doc.text(c.label, cx, hy + 5, { width: c.width - 6 });
+          cx += c.width;
+        }
+        doc.y = hy + 18;
+      };
+
+      drawCatHeader();
+
+      categoryRows.forEach((row, idx) => {
+        if (doc.y > doc.page.height - 80) {
+          doc.addPage();
+          doc.y = 40;
+          drawCatHeader();
+        }
+        const ry = doc.y;
+        const rowH = 18;
+        if (idx % 2 === 0) doc.rect(marginX, ry, pageWidth, rowH).fill(COLOR.zebra);
+
+        const pct = row.budget > 0 ? Math.round((row.spent / row.budget) * 100) : row.spent > 0 ? 100 : 0;
+        const pctColor = pct > 100 ? COLOR.clay : pct > 80 ? COLOR.safety : COLOR.moss;
+
+        let cx = marginX + 6;
+        doc.font('Helvetica').fontSize(8.5).fillColor(COLOR.ink);
+        doc.text(row.category, cx, ry + 4, { width: catCols[0].width - 6, ellipsis: true });
+        cx += catCols[0].width;
+        doc.text(row.budget > 0 ? formatMoney(row.budget, project.currency) : '-', cx, ry + 4, { width: catCols[1].width - 6 });
+        cx += catCols[1].width;
+        doc.text(formatMoney(row.spent, project.currency), cx, ry + 4, { width: catCols[2].width - 6 });
+        cx += catCols[2].width;
+        doc.fillColor(pctColor).font('Helvetica-Bold').text(row.budget > 0 ? `${pct}%` : '-', cx, ry + 4, { width: catCols[3].width - 6 });
+
+        doc.y = ry + rowH;
+      });
+      doc.moveDown(1);
+    }
+
+    // ------------------------------------------------------------------
+    // Detail des transactions
+    // ------------------------------------------------------------------
+    if (doc.y > doc.page.height - 140) doc.addPage();
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(COLOR.ink).text('Detail des transactions', marginX, doc.y);
+    doc.moveDown(0.5);
+
     const columns = [
-      { key: 'date', label: 'Date', width: 60 },
-      { key: 'label', label: 'Libelle', width: 155 },
-      { key: 'quantity', label: 'Qte', width: 45 },
-      { key: 'unitPrice', label: 'P.U.', width: 70 },
-      { key: 'total', label: 'Total', width: 90 },
-      { key: 'observation', label: 'Observation', width: pageWidth - (60 + 155 + 45 + 70 + 90) },
+      { key: 'date', label: 'Date', width: 55 },
+      { key: 'type', label: 'Type', width: 52 },
+      { key: 'label', label: 'Libelle', width: 130 },
+      { key: 'quantity', label: 'Qte', width: 35 },
+      { key: 'unitPrice', label: 'P.U.', width: 62 },
+      { key: 'total', label: 'Total', width: 78 },
+      { key: 'observation', label: 'Observation', width: pageWidth - (55 + 52 + 130 + 35 + 62 + 78) },
     ];
 
     const drawHeader = () => {
-      let x = doc.x;
-      const y = doc.y;
-      doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff');
-      doc.rect(x, y, pageWidth, 18).fill('#0f172a');
-      doc.fillColor('#ffffff');
-      let cx = x + 4;
+      const hy = doc.y;
+      doc.rect(marginX, hy, pageWidth, 18).fill(COLOR.primary);
+      let cx = marginX + 5;
+      doc.font('Helvetica-Bold').fontSize(8).fillColor('#ffffff');
       for (const col of columns) {
-        doc.text(col.label, cx, y + 5, { width: col.width - 6, ellipsis: true });
+        doc.text(col.label, cx, hy + 5, { width: col.width - 6, ellipsis: true });
         cx += col.width;
       }
-      doc.fillColor('#000000');
-      doc.moveDown(1.3);
+      doc.y = hy + 18;
     };
 
     drawHeader();
-    doc.font('Helvetica').fontSize(8);
 
-    for (const row of rows) {
-      if (doc.y > doc.page.height - 100) {
-        doc.addPage();
-        drawHeader();
-        doc.font('Helvetica').fontSize(8);
-      }
-      const y = doc.y;
-      let cx = doc.x + 4;
-      const values = [
-        row.date.toLocaleDateString('fr-FR'),
-        row.label,
-        row.quantity,
-        row.unitPrice,
-        row.total,
-        row.observation,
-      ];
-      values.forEach((val, i) => {
-        doc.text(String(val), cx, y, { width: columns[i].width - 6, ellipsis: true });
-        cx += columns[i].width;
-      });
-      doc.moveDown(0.9);
+    if (rows.length === 0) {
+      doc.font('Helvetica-Oblique').fontSize(9).fillColor(COLOR.muted).text('Aucune operation validee pour ce chantier.', marginX + 6, doc.y + 8);
+      doc.moveDown(2);
     }
 
-    // --- Recapitulatif ---
-    if (doc.y > doc.page.height - 160) doc.addPage();
+    rows.forEach((row, idx) => {
+      if (doc.y > doc.page.height - 100) {
+        doc.addPage();
+        doc.y = 40;
+        drawHeader();
+      }
+      const ry = doc.y;
+      const rowH = 17;
+      if (idx % 2 === 0) doc.rect(marginX, ry, pageWidth, rowH).fill(COLOR.zebra);
+
+      let cx = marginX + 5;
+      doc.font('Helvetica').fontSize(7.5).fillColor(COLOR.ink);
+      doc.text(row.date.toLocaleDateString('fr-FR'), cx, ry + 4, { width: columns[0].width - 6 });
+      cx += columns[0].width;
+
+      doc.font('Helvetica-Bold').fillColor(row.type === 'Depot' ? COLOR.moss : COLOR.clay);
+      doc.text(row.type === 'Depot' ? 'Depot' : 'Depense', cx, ry + 4, { width: columns[1].width - 6 });
+      cx += columns[1].width;
+
+      doc.font('Helvetica').fillColor(COLOR.ink);
+      doc.text(row.label, cx, ry + 4, { width: columns[2].width - 6, ellipsis: true });
+      cx += columns[2].width;
+      doc.text(row.quantity, cx, ry + 4, { width: columns[3].width - 6 });
+      cx += columns[3].width;
+      doc.text(row.unitPrice, cx, ry + 4, { width: columns[4].width - 6, ellipsis: true });
+      cx += columns[4].width;
+
+      doc.font('Helvetica-Bold').fillColor(row.totalRaw >= 0 ? COLOR.moss : COLOR.ink);
+      doc.text(row.total, cx, ry + 4, { width: columns[5].width - 6, ellipsis: true });
+      cx += columns[5].width;
+
+      doc.font('Helvetica').fillColor(COLOR.muted).fontSize(7);
+      doc.text(row.observation, cx, ry + 4, { width: columns[6].width - 6, ellipsis: true });
+
+      doc.y = ry + rowH;
+    });
+
     doc.moveDown(1);
-    doc.font('Helvetica-Bold').fontSize(11).text('Recapitulatif');
-    doc.moveDown(0.4);
-    doc.font('Helvetica').fontSize(10);
-    doc.text(`Budget estime : ${formatMoney(project.budget, project.currency)}`);
-    doc.text(`Total des depots : ${formatMoney(project.wallet?.totalDeposited ?? 0, project.currency)}`);
-    doc.text(`Total des depenses : ${formatMoney(project.wallet?.totalSpent ?? 0, project.currency)}`);
-    doc.font('Helvetica-Bold').text(`Solde restant : ${formatMoney(project.wallet?.balance ?? 0, project.currency)}`);
-    doc.font('Helvetica').moveDown(0.4);
-    doc.text(`Nombre de transactions : ${rows.length}`);
+    doc.font('Helvetica').fontSize(8).fillColor(COLOR.muted);
+    doc.text(`Nombre de transactions : ${rows.length}`, marginX, doc.y);
     if (rows.length > 0) {
       doc.text(
         `Periode couverte : ${rows[0].date.toLocaleDateString('fr-FR')} - ${rows[rows.length - 1].date.toLocaleDateString('fr-FR')}`,
+        marginX,
+        doc.y,
       );
+    }
+
+    // ------------------------------------------------------------------
+    // Pied de page (pagination) - applique a toutes les pages generees
+    // ------------------------------------------------------------------
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      const footerY = doc.page.height - 34;
+      doc.moveTo(marginX, footerY).lineTo(doc.page.width - marginX, footerY).lineWidth(0.5).strokeColor(COLOR.gold).stroke();
+      doc.font('Helvetica').fontSize(7.5).fillColor(COLOR.muted);
+      doc.text('Suivi de Chantier - document genere automatiquement', marginX, footerY + 6);
+      doc.text(`Page ${i - range.start + 1} / ${range.count}`, marginX, footerY + 6, { width: pageWidth, align: 'right' });
     }
 
     doc.end();
@@ -162,7 +368,7 @@ export class ReportsService {
   }
 
   // --------------------------------------------------------------------
-  // EXCEL (section 39)
+  // EXCEL (section 39) - inchange
   // --------------------------------------------------------------------
   async generateExcel(projectId: string): Promise<{ buffer: Buffer; filename: string }> {
     const { project, deposits, expenses } = await this.loadProjectData(projectId);
@@ -171,7 +377,6 @@ export class ReportsService {
     workbook.creator = 'Suivi de Chantier';
     workbook.created = new Date();
 
-    // --- Feuille Recapitulatif ---
     const summarySheet = workbook.addWorksheet('Recapitulatif');
     summarySheet.columns = [{ width: 30 }, { width: 25 }];
     summarySheet.addRows([
@@ -186,7 +391,6 @@ export class ReportsService {
     ]);
     summarySheet.getColumn(1).font = { bold: true };
 
-    // --- Feuille Depots ---
     const depositSheet = workbook.addWorksheet('Depots');
     depositSheet.columns = [
       { header: 'Date', key: 'date', width: 14 },
@@ -210,7 +414,6 @@ export class ReportsService {
       });
     }
 
-    // --- Feuille Depenses ---
     const expenseSheet = workbook.addWorksheet('Depenses');
     expenseSheet.columns = [
       { header: 'Date', key: 'date', width: 14 },
@@ -238,7 +441,6 @@ export class ReportsService {
       });
     }
 
-    // --- Feuille Materiaux (agregation par materiau) ---
     const materialTotals = new Map<string, { quantity: number; total: number; unit: string }>();
     for (const e of expenses) {
       const key = e.label;
