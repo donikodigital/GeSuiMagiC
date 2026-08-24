@@ -1,10 +1,18 @@
-//frontend/src/app/(auth)/login/page.tsx
+// ============================================================================
+// app/(auth)/login/page.tsx - v1.1
+// Ajout d'un bouton oeil pour afficher/masquer la saisie du mot de passe.
+// tabIndex=-1 sur le bouton pour ne pas casser l'ordre de tabulation
+// (email -> mot de passe -> se connecter).
+// ============================================================================
+
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { FormField, Input } from '@/components/ui/input';
@@ -17,6 +25,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const { login, isLoggingIn } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
@@ -36,7 +45,24 @@ export default function LoginPage() {
         </FormField>
 
         <FormField label="Mot de passe" htmlFor="password" error={errors.password?.message} required>
-          <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              className="pr-10"
+              {...register('password')}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              tabIndex={-1}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-ink-400 transition hover:text-ink-600"
+              aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </FormField>
 
         <div className="flex justify-end">

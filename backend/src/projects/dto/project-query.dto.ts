@@ -1,3 +1,4 @@
+//backend/src/projects/dto/project-query.dto.ts
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { ProjectStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';

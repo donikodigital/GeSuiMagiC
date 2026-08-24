@@ -1,3 +1,4 @@
+//frontend/src/app/layout.tsx
 import type { Metadata } from 'next';
 import { Toaster } from 'sonner';
 import { fraunces, inter, plexMono } from '@/lib/fonts';

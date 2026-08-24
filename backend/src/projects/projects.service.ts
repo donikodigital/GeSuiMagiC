@@ -1,3 +1,4 @@
+//backend/src/projects/projects.service.ts
 import { Injectable } from '@nestjs/common';
 import { Prisma, ProjectStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';

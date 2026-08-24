@@ -1,3 +1,4 @@
+//backend/src/projects/dto/update-project.dto.ts
 import { IsDateString, IsInt, IsNumber, IsOptional, IsString } from 'class-validator';
 
 /** Champs non-financiers modifiables par le client (section 5/9). */

@@ -1,3 +1,4 @@
+//backend/src/supervisors/supervisors.controller.ts
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsIn } from 'class-validator';

@@ -1,6 +1,7 @@
+//backend/src/projects/projects.controller.ts
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ProjectStatus, UserRole } from '@prisma/client';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { ProjectAccessGuard, ProjectParam } from '../common/guards/project-access.guard';
@@ -18,6 +19,8 @@ class UpdateStatusDto {
 }
 
 class AssignSupervisorDto {
+  @IsString()
+  @IsNotEmpty()
   supervisorId: string;
 }
 
