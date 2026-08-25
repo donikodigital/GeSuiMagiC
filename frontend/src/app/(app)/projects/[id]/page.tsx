@@ -1,15 +1,11 @@
 // ============================================================================
-// app/(app)/projects/[id]/page.tsx - v1.2
-// - Carte "Budget" retiree pour le superviseur (isSupervisor) : 3 cartes au
-//   lieu de 4, meme logique que le hero de dashboard.
-// - Bug de debordement horizontal mobile corrige : les cartes n'avaient pas
-//   min-w-0, donc une grille a 2 colonnes avec un contenu un peu large
-//   poussait au-dela de la largeur d'ecran (visible seulement en zoomant,
-//   d'ou l'impression que "dezoomer" arrangeait les choses - le zoom ne
-//   change rien au DOM, il masquait juste le symptome).
-// - Cartes redessinees en version compacte (icone + libelle sur une ligne,
-//   valeur en dessous) pour rester lisibles a 3 ou 4 par ligne sur mobile,
-//   via une grille a N colonnes fixes (N = nombre de cartes actives).
+// app/(app)/projects/[id]/page.tsx - v1.3
+// Grille des 4 cartes resume passee en responsive : 2 colonnes fixes sur
+// mobile (au lieu de 3/4 colonnes ecrasees qui tronquaient les montants),
+// puis cardCount colonnes (3 pour superviseur, 4 sinon) a partir de sm:.
+// Remplace le style inline gridTemplateColumns par des classes Tailwind -
+// necessaire car cardCount est dynamique et Tailwind ne peut pas generer
+// une classe a partir d'un template literal.
 // ============================================================================
 //
 // - Les 4 StatCard generiques sont remplacees par des cartes custom avec
@@ -85,7 +81,7 @@ export default function ProjectOverviewPage() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:gap-4" style={{ gridTemplateColumns: `repeat(${cardCount}, minmax(0, 1fr))` }}>
+      <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${cardCount === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
         {!isSupervisor && (
           <Card className="min-w-0">
             <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">

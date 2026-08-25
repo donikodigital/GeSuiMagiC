@@ -1,21 +1,16 @@
 // ============================================================================
-// backend/src/reports/reports.service.ts - v2.0
-// Refonte du PDF uniquement (l'Excel n'a pas ete touche) :
-// - Bandeau d'en-tete navy/or + identite du chantier en 2 colonnes
-// - Resume executif (4 cartes Budget/Verse/Depense/Solde) place EN HAUT,
-//   au lieu du recapitulatif texte perdu tout en bas
-// - Nouvelle section "Repartition par categorie" (budget vs reel), qui
-//   n'existait pas du tout - le modele Budget n'etait jamais interroge
-// - Tableau des transactions : colonne "Type" ajoutee (avant, seul le
-//   signe du montant distinguait un depot d'une depense), lignes zebrees,
-//   couleurs coherentes avec le reste de l'app
-// - Mention du nombre de depots/depenses encore PENDING (donc absents du
-//   rapport, qui ne reprend que les operations APPROVED) - evite qu'un
-//   rapport creux passe pour un bug
-// - Pied de page avec pagination "Page X / Y" (bufferPages + bufferedPageRange)
+// backend/src/reports/reports.service.ts - v2.1
+// Ajout du logo GeSuiMagiC dans le bandeau d'en-tete du PDF (a gauche du
+// titre "Suivi de Chantier"), coins arrondis via un clip PDFKit pour rester
+// coherent avec le traitement du logo cote frontend (rounded-2xl).
+// Lecture du fichier verifiee avec fs.existsSync : si le PNG n'est pas
+// present sur le serveur (asset pas copie au build, mauvais chemin...), le
+// rapport se genere quand meme sans logo plutot que de planter.
 // ============================================================================
 
 import { Injectable } from '@nestjs/common';
+import * as path from 'path';
+import * as fs from 'fs';
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,6 +42,10 @@ const COLOR = {
   zebra: '#f7f5f0',
   neutralLight: '#eef1f6',
 };
+
+// Chemin resolu depuis la racine du process (cwd du serveur Nest en prod),
+// pas depuis __dirname qui pointe vers dist/reports une fois compile.
+const LOGO_PATH = path.join(process.cwd(), 'assets', 'logo.png');
 
 @Injectable()
 export class ReportsService {
@@ -140,10 +139,25 @@ export class ReportsService {
     // Bandeau d'en-tete
     // ------------------------------------------------------------------
     doc.rect(0, 0, doc.page.width, 84).fill(COLOR.primary);
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(17).text('Suivi de Chantier', marginX, 22);
-    doc.fillColor(COLOR.gold).font('Helvetica-Bold').fontSize(9).text('RAPPORT FINANCIER DE CHANTIER', marginX, 44, { characterSpacing: 1 });
+
+    const logoSize = 56;
+    const logoX = marginX;
+    const logoY = 14;
+    let textX = marginX;
+
+    const hasLogo = fs.existsSync(LOGO_PATH);
+    if (hasLogo) {
+      doc.save();
+      doc.roundedRect(logoX, logoY, logoSize, logoSize, 8).clip();
+      doc.image(LOGO_PATH, logoX, logoY, { width: logoSize, height: logoSize });
+      doc.restore();
+      textX = logoX + logoSize + 12;
+    }
+
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(17).text('Suivi de Chantier', textX, 22);
+    doc.fillColor(COLOR.gold).font('Helvetica-Bold').fontSize(9).text('RAPPORT FINANCIER DE CHANTIER', textX, 44, { characterSpacing: 1 });
     doc.fillColor('#ffffff').fillOpacity(0.55).font('Helvetica').fontSize(8);
-    doc.text(`Genere le ${new Date().toLocaleString('fr-FR')}`, marginX, 60);
+    doc.text(`Genere le ${new Date().toLocaleString('fr-FR')}`, textX, 60);
     doc.fillOpacity(1);
 
     // ------------------------------------------------------------------

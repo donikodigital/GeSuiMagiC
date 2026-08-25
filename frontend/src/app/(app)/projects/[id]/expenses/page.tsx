@@ -1,21 +1,22 @@
 // ============================================================================
-// app/(app)/projects/[id]/expenses/page.tsx - v1.1
-// Pour le superviseur uniquement : la table passe de 5-6 colonnes a
-// Date/Libelle/Total/Statut, et le clic sur une ligne ouvre une modale avec
-// le reste (quantite x P.U., fournisseur, reference facture, observation)
-// au lieu de naviguer vers la page detail. Client et Superadmin gardent le
-// comportement complet inchange (colonnes completes, navigation vers la
-// page detail, actions Valider/Refuser pour le client).
+// app/(app)/projects/[id]/expenses/page.tsx - v1.3
+// Fix : le total affichait "1 500 000" sans devise (formatMoney appele avec
+// une devise vide en dur, faute d'un champ currency sur Expense - contrairement
+// a Deposit, une depense herite de la devise du projet parent). Ajout d'un
+// appel a useProjectFinancialSummary (deja utilise sur la page Apercu) pour
+// recuperer summary.currency, reutilise partout ou formatMoney(..., '')
+// etait appele en dur : colonne Total, Qte x P.U. et Total dans la modale.
 // ============================================================================
 
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Plus, Check, X } from 'lucide-react';
 import { useExpenses, useApproveExpense, useRejectExpense } from '@/hooks/use-expenses';
+import { useProjectFinancialSummary } from '@/hooks/use-projects';
 import { useCategories } from '@/hooks/use-catalog';
 import { useAuth } from '@/hooks/use-auth';
 import { DataTable } from '@/components/shared/data-table';
@@ -30,8 +31,7 @@ import type { Expense, ExpenseStatus } from '@/types/models';
 
 export default function ProjectExpensesPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
-  const { isClient, isSupervisor } = useAuth();
+  const { isClient, isSuperadmin, isSupervisor } = useAuth();
   const [status, setStatus] = React.useState<ExpenseStatus | ''>('');
   const [categoryId, setCategoryId] = React.useState('');
   const [page, setPage] = React.useState(1);
@@ -39,73 +39,33 @@ export default function ProjectExpensesPage() {
   const [detailTarget, setDetailTarget] = React.useState<Expense | null>(null);
 
   const { data, isLoading, isError } = useExpenses(params.id, { page, limit: 20, status: status || undefined, categoryId: categoryId || undefined });
+  const { data: summary } = useProjectFinancialSummary(params.id);
+  const currency = summary?.currency ?? '';
   const { data: categories } = useCategories();
   const approveMutation = useApproveExpense(params.id);
   const rejectMutation = useRejectExpense(params.id);
 
-  const columns = React.useMemo<ColumnDef<Expense, any>[]>(() => {
-    if (isSupervisor) {
-      return [
-        { header: 'Date', accessorKey: 'date', cell: ({ row }) => formatDate(row.original.date) },
-        { header: 'Libelle', accessorKey: 'label', cell: ({ row }) => <span className="font-medium text-ink-900">{row.original.label}</span> },
-        { header: 'Total', id: 'total', cell: ({ row }) => <span className="font-ledger font-medium">{formatMoney(row.original.total, '')}</span> },
-        {
-          header: 'Statut',
-          accessorKey: 'status',
-          cell: ({ row }) => <StatusBadge label={expenseStatusMeta[row.original.status].label} tone={expenseStatusMeta[row.original.status].tone} />,
-        },
-      ];
-    }
-
-    const base: ColumnDef<Expense, any>[] = [
-      { header: 'Date', accessorKey: 'date', cell: ({ row }) => formatDate(row.original.date) },
+  const columns = React.useMemo<ColumnDef<Expense, any>[]>(
+    () => [
+      { header: 'Date', accessorKey: 'date', cell: ({ row }) => <span className="text-xs sm:text-sm">{formatDate(row.original.date)}</span> },
       {
         header: 'Libelle',
         id: 'label',
         cell: ({ row }) => (
-          <div>
-            <p className="font-medium text-ink-900">{row.original.label}</p>
-            <p className="text-xs text-ink-400">{row.original.category?.name}</p>
+          <div className="max-w-[110px] sm:max-w-none">
+            <p className="truncate text-xs font-medium text-ink-900 sm:text-sm">{row.original.label}</p>
+            <p className="truncate text-[10px] text-ink-400 sm:text-xs">{row.original.category?.name}</p>
           </div>
         ),
       },
       {
-        header: 'Qte x P.U.',
-        id: 'quantity',
-        cell: ({ row }) => (
-          <span className="font-ledger text-xs text-ink-500">
-            {row.original.quantity} {row.original.unit} × {formatMoney(row.original.unitPrice, '')}
-          </span>
-        ),
+        header: 'Total',
+        id: 'total',
+        cell: ({ row }) => <span className="font-ledger text-xs font-medium sm:text-sm">{formatMoney(row.original.total, currency)}</span>,
       },
-      { header: 'Total', id: 'total', cell: ({ row }) => <span className="font-ledger font-medium">{formatMoney(row.original.total, '')}</span> },
-      {
-        header: 'Statut',
-        accessorKey: 'status',
-        cell: ({ row }) => <StatusBadge label={expenseStatusMeta[row.original.status].label} tone={expenseStatusMeta[row.original.status].tone} />,
-      },
-    ];
-
-    if (isClient) {
-      base.push({
-        header: '',
-        id: 'actions',
-        cell: ({ row }: { row: { original: Expense } }) =>
-          row.original.status === 'PENDING' ? (
-            <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <Button size="sm" variant="outline" onClick={() => approveMutation.mutate(row.original.id)} loading={approveMutation.isPending}>
-                <Check className="h-3.5 w-3.5 text-moss-600" />
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setRejectTarget(row.original)}>
-                <X className="h-3.5 w-3.5 text-clay-600" />
-              </Button>
-            </div>
-          ) : null,
-      });
-    }
-
-    return base;
-  }, [isClient, isSupervisor, approveMutation]);
+    ],
+    [currency],
+  );
 
   return (
     <div>
@@ -146,7 +106,7 @@ export default function ProjectExpensesPage() {
           isLoading={isLoading}
           emptyTitle="Aucune depense"
           emptyDescription={isSupervisor ? 'Enregistrez une depense pour ce chantier.' : 'Aucune depense enregistree pour ce chantier.'}
-          onRowClick={(row) => (isSupervisor ? setDetailTarget(row) : router.push(`/projects/${params.id}/expenses/${row.id}`))}
+          onRowClick={(row) => setDetailTarget(row)}
           meta={data?.meta}
           onPageChange={setPage}
         />
@@ -168,14 +128,33 @@ export default function ProjectExpensesPage() {
         <Dialog open onClose={() => setDetailTarget(null)} title={detailTarget.label} description={detailTarget.category?.name}>
           <dl className="space-y-3 text-sm">
             <Field label="Date" value={formatDate(detailTarget.date)} />
-            <Field label="Quantite" value={`${detailTarget.quantity} ${detailTarget.unit} × ${formatMoney(detailTarget.unitPrice, '')}`} />
-            <Field label="Total" value={formatMoney(detailTarget.total, '')} />
+            <Field label="Quantite" value={`${detailTarget.quantity} ${detailTarget.unit} × ${formatMoney(detailTarget.unitPrice, currency)}`} />
+            <Field label="Total" value={formatMoney(detailTarget.total, currency)} />
             <Field label="Fournisseur" value={detailTarget.supplier || '-'} />
             <Field label="Reference facture" value={detailTarget.invoiceReference || '-'} />
             {detailTarget.observation && <Field label="Observation" value={detailTarget.observation} full />}
             <Field label="Statut" value={expenseStatusMeta[detailTarget.status].label} />
           </dl>
-          <div className="mt-5 flex justify-end">
+
+          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-concrete pt-4">
+            {isClient && detailTarget.status === 'PENDING' && (
+              <>
+                <Button
+                  onClick={() => approveMutation.mutate(detailTarget.id, { onSuccess: () => setDetailTarget(null) })}
+                  loading={approveMutation.isPending}
+                >
+                  <Check className="h-4 w-4" /> Valider la depense
+                </Button>
+                <Button variant="outline" onClick={() => { setRejectTarget(detailTarget); setDetailTarget(null); }}>
+                  <X className="h-4 w-4" /> Refuser
+                </Button>
+              </>
+            )}
+            {(isClient || isSuperadmin) && (
+              <Link href={`/projects/${params.id}/expenses/${detailTarget.id}`}>
+                <Button variant="outline">Voir le detail complet</Button>
+              </Link>
+            )}
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               Fermer
             </Button>

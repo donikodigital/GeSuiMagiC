@@ -1,8 +1,12 @@
 // ============================================================================
-// app/(app)/projects/page.tsx - v1.1
-// Colonne Budget retiree pour le superviseur (deja fait ailleurs dans le
-// hero/l'apercu projet pour la meme raison). Sans elle, la table tient sans
-// scroll horizontal sur mobile - c'etait deja la colonne la plus large en trop.
+// app/(app)/projects/page.tsx - v1.2
+// Pour le superadmin uniquement : colonnes Statut et Solde retirees du
+// tableau, ne restent visibles que Projet/Client/Budget. Ces informations
+// restent accessibles via le clic sur la ligne, qui navigue deja vers la
+// page detail du projet (statut + solde y sont affiches dans le bandeau et
+// les cartes de resume). Client et superviseur : aucun changement, memes
+// colonnes qu'avant (Statut visible pour les deux, Budget masque pour le
+// superviseur, Solde visible pour les deux).
 // ============================================================================
 
 'use client';
@@ -51,11 +55,13 @@ export default function ProjectsPage() {
         cell: ({ row }) => (row.original.client ? `${row.original.client.firstName} ${row.original.client.lastName}` : '-'),
       });
     }
-    base.push({
-      header: 'Statut',
-      accessorKey: 'status',
-      cell: ({ row }) => <StatusBadge label={projectStatusMeta[row.original.status].label} tone={projectStatusMeta[row.original.status].tone} />,
-    });
+    if (!isSuperadmin) {
+      base.push({
+        header: 'Statut',
+        accessorKey: 'status',
+        cell: ({ row }) => <StatusBadge label={projectStatusMeta[row.original.status].label} tone={projectStatusMeta[row.original.status].tone} />,
+      });
+    }
     if (!isSupervisor) {
       base.push({
         header: 'Budget',
@@ -63,18 +69,20 @@ export default function ProjectsPage() {
         cell: ({ row }) => <span className="font-ledger">{formatMoney(row.original.budget, row.original.currency)}</span>,
       });
     }
-    base.push({
-      header: 'Solde',
-      id: 'balance',
-      cell: ({ row }) => {
-        const balance = parseFloat(row.original.wallet?.balance ?? '0');
-        return (
-          <span className={`font-ledger font-medium ${balance < 0 ? 'text-clay-600' : 'text-ink-900'}`}>
-            {formatMoney(balance, row.original.currency)}
-          </span>
-        );
-      },
-    });
+    if (!isSuperadmin) {
+      base.push({
+        header: 'Solde',
+        id: 'balance',
+        cell: ({ row }) => {
+          const balance = parseFloat(row.original.wallet?.balance ?? '0');
+          return (
+            <span className={`font-ledger font-medium ${balance < 0 ? 'text-clay-600' : 'text-ink-900'}`}>
+              {formatMoney(balance, row.original.currency)}
+            </span>
+          );
+        },
+      });
+    }
     return base;
   }, [isSuperadmin, isSupervisor]);
 

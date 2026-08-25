@@ -1,15 +1,7 @@
-//frontend/src/app/(auth)/layout.tsx
 // ============================================================================
-// app/(auth)/layout.tsx - v1.1
-// Ajout du logo GeSuiMagiC au-dessus du formulaire, dans le conteneur
-// partage donc visible sur TOUTES les pages (auth) et a TOUTES les tailles
-// d'ecran - contrairement au panneau navy de gauche, cache sous lg:.
-// Le panneau desktop (icone HardHat + accroche) n'a pas ete touche : dis-moi
-// si tu veux aussi y remplacer l'icone par le logo reel.
-//
-// A FAIRE DE TON COTE : enregistrer le PNG du logo dans
-// frontend/public/logo.png (le nom doit correspondre exactement au src
-// ci-dessous, ou adapte le src si tu choisis un autre nom/format).
+// app/(auth)/layout.tsx - v1.2
+// Coins arrondis + ombre subtile sur le logo pour l'intégrer proprement au
+// fond papier (le PNG a un fond navy carré, sans ça il "flotte" à l'écran).
 // ============================================================================
 
 import Image from 'next/image';
@@ -46,7 +38,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               width={240}
               height={240}
               priority
-              className="h-auto w-40 sm:w-48"
+              className="h-auto w-36 rounded-2xl shadow-lg ring-1 ring-ink-900/10 sm:w-44"
             />
           </div>
           {children}

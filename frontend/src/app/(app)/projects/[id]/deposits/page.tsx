@@ -1,19 +1,16 @@
 // ============================================================================
-// app/(app)/projects/[id]/deposits/page.tsx - v1.1
-// Pour le superviseur uniquement : la table passe a Date/Motif/Montant/Statut
-// (date au format numerique jj/mm/aaaa, demande explicitement pour cette
-// vue). Le clic sur une ligne ouvre une modale avec le reste (superviseur
-// beneficiaire, mode de versement, reference, observation) - les boutons
-// Valider/Refuser, avant en colonne d'actions sur la ligne, sont deplaces
-// dans cette modale. Client et Superadmin gardent le comportement complet
-// inchange (colonnes completes, navigation vers la page detail).
+// app/(app)/projects/[id]/deposits/page.tsx - v1.3
+// Colonne Statut retiree du tableau (gardait la ligne trop chargee sur
+// mobile) - deja affichee dans la modale de detail, aucun changement
+// necessaire de ce cote. Ne reste visible dans le tableau que Date, Motif,
+// Montant.
 // ============================================================================
 
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Plus, Check, X } from 'lucide-react';
 import { useDeposits, useApproveDeposit, useRejectDeposit } from '@/hooks/use-deposits';
@@ -25,13 +22,12 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/misc';
-import { depositStatusMeta, formatDate, formatDateTime, formatMoney, paymentMethodLabels } from '@/lib/format';
+import { depositStatusMeta, formatDateTime, formatMoney, paymentMethodLabels } from '@/lib/format';
 import type { Deposit, DepositStatus } from '@/types/models';
 
 export default function ProjectDepositsPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
-  const { isClient, isSupervisor } = useAuth();
+  const { isClient, isSuperadmin, isSupervisor } = useAuth();
   const [status, setStatus] = React.useState<DepositStatus | ''>('');
   const [page, setPage] = React.useState(1);
   const [rejectTarget, setRejectTarget] = React.useState<Deposit | null>(null);
@@ -41,45 +37,28 @@ export default function ProjectDepositsPage() {
   const approveMutation = useApproveDeposit(params.id);
   const rejectMutation = useRejectDeposit(params.id);
 
-  const columns = React.useMemo<ColumnDef<Deposit, any>[]>(() => {
-    if (isSupervisor) {
-      return [
-        { header: 'Date', accessorKey: 'date', cell: ({ row }) => new Date(row.original.date).toLocaleDateString('fr-FR') },
-        { header: 'Motif', accessorKey: 'motif', cell: ({ row }) => row.original.motif || '-' },
-        {
-          header: 'Montant',
-          id: 'amount',
-          cell: ({ row }) => <span className="font-ledger font-medium">{formatMoney(row.original.amount, row.original.currency)}</span>,
-        },
-        {
-          header: 'Statut',
-          accessorKey: 'status',
-          cell: ({ row }) => <StatusBadge label={depositStatusMeta[row.original.status].label} tone={depositStatusMeta[row.original.status].tone} />,
-        },
-      ];
-    }
-
-    return [
-      { header: 'Date', accessorKey: 'date', cell: ({ row }) => formatDate(row.original.date) },
+  const columns = React.useMemo<ColumnDef<Deposit, any>[]>(
+    () => [
       {
-        header: 'Superviseur',
-        id: 'supervisor',
-        cell: ({ row }) => (row.original.supervisor ? `${row.original.supervisor.firstName} ${row.original.supervisor.lastName}` : '-'),
+        header: 'Date',
+        accessorKey: 'date',
+        cell: ({ row }) => <span className="text-xs sm:text-sm">{new Date(row.original.date).toLocaleDateString('fr-FR')}</span>,
       },
-      { header: 'Motif', accessorKey: 'motif', cell: ({ row }) => row.original.motif || '-' },
-      { header: 'Mode', id: 'mode', cell: ({ row }) => paymentMethodLabels[row.original.paymentMethod] },
+      {
+        header: 'Motif',
+        accessorKey: 'motif',
+        cell: ({ row }) => <span className="block max-w-[90px] truncate text-xs sm:max-w-none sm:text-sm">{row.original.motif || '-'}</span>,
+      },
       {
         header: 'Montant',
         id: 'amount',
-        cell: ({ row }) => <span className="font-ledger font-medium">{formatMoney(row.original.amount, row.original.currency)}</span>,
+        cell: ({ row }) => (
+          <span className="font-ledger text-xs font-medium sm:text-sm">{formatMoney(row.original.amount, row.original.currency)}</span>
+        ),
       },
-      {
-        header: 'Statut',
-        accessorKey: 'status',
-        cell: ({ row }) => <StatusBadge label={depositStatusMeta[row.original.status].label} tone={depositStatusMeta[row.original.status].tone} />,
-      },
-    ];
-  }, [isSupervisor]);
+    ],
+    [],
+  );
 
   return (
     <div>
@@ -109,7 +88,7 @@ export default function ProjectDepositsPage() {
           isLoading={isLoading}
           emptyTitle="Aucun depot"
           emptyDescription={isClient ? 'Enregistrez un depot pour alimenter le portefeuille du chantier.' : 'Aucun depot enregistre pour ce chantier.'}
-          onRowClick={(row) => (isSupervisor ? setDetailTarget(row) : router.push(`/projects/${params.id}/deposits/${row.id}`))}
+          onRowClick={(row) => setDetailTarget(row)}
           meta={data?.meta}
           onPageChange={setPage}
         />
@@ -159,6 +138,11 @@ export default function ProjectDepositsPage() {
                   <X className="h-4 w-4" /> Refuser
                 </Button>
               </>
+            )}
+            {(isClient || isSuperadmin) && (
+              <Link href={`/projects/${params.id}/deposits/${detailTarget.id}`}>
+                <Button variant="outline">Voir le detail complet</Button>
+              </Link>
             )}
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               Fermer

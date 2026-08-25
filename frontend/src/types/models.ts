@@ -1,3 +1,4 @@
+//frontend/src/types/models.ts
 // ============================================================================
 // Types partages - miroir des enums/entites Prisma du backend.
 // Toute modification du schema backend doit se refleter ici.
