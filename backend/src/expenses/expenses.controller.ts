@@ -1,3 +1,4 @@
+//backend/src/expenses/expenses.controller.ts
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';

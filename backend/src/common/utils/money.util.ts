@@ -1,3 +1,11 @@
+//backend/src/common/utils/money.util.ts - v1.1
+// Fix : Intl.NumberFormat('fr-FR') insere une espace fine insecable
+// (U+202F) comme separateur de milliers. La police Helvetica par defaut de
+// pdfkit ne connait pas ce caractere et l'affichait comme "/" dans le
+// rapport PDF. On garde Intl pour le calcul (arrondi, decimales, signe),
+// on remplace juste les variantes d'espace insecable par une espace ASCII
+// normale (U+0020), universellement supportee.
+
 import { Prisma } from '@prisma/client';
 
 /**
@@ -39,5 +47,7 @@ export function isGreaterThanOrEqual(a: Prisma.Decimal | number | string, b: Pri
 /** Formatte un montant pour affichage humain, ex: 12 500 000 */
 export function formatMoney(value: Prisma.Decimal | number | string, currency = 'GNF'): string {
   const num = toDecimal(value).toNumber();
-  return `${new Intl.NumberFormat('fr-FR').format(num)} ${currency}`;
+  // \u00A0 = espace insecable, \u202F = espace fine insecable, \u2009 = espace fine
+  const formatted = new Intl.NumberFormat('fr-FR').format(num).replace(/[\u00A0\u202F\u2009]/g, ' ');
+  return `${formatted} ${currency}`;
 }

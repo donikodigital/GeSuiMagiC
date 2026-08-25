@@ -1,3 +1,4 @@
+//backend/src/anomalies/dto/anomaly-query.dto.ts
 import { IsEnum, IsOptional } from 'class-validator';
 import { AnomalyStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';

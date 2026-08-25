@@ -1,3 +1,4 @@
+//frontend/src/app/(app)/anomalies/page.tsx
 'use client';
 
 import * as React from 'react';

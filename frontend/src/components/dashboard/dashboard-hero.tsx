@@ -1,12 +1,10 @@
 // ============================================================================
-// frontend/src/components/dashboard/dashboard-hero.tsx - v1.1
-// ============================================================================
-// ============================================================================
-// dashboard-hero.tsx - v1.3
-// Les puces restent sur une seule ligne a TOUTES les tailles d'ecran
-// (avant, elles se remettaient a wrapper en 2+1 sur desktop a cause du
-// lg:flex qui annulait la grille mobile). Colonne droite elargie
-// (lg:w-80 -> lg:w-96) pour laisser respirer 3 puces sur la meme ligne.
+// dashboard-hero.tsx - v1.4
+// Ajout d'un selecteur de chantier optionnel (projectSelector), affiche
+// uniquement si la personne a 2 projets ou plus. Permet a Client/Superviseur
+// de voir le solde d'UN chantier precis plutot qu'une somme agregee de tous
+// leurs chantiers combines (qui contredisait le principe de portefeuille
+// independant par chantier annonce partout ailleurs dans l'app).
 // ============================================================================
 
 'use client';
@@ -34,8 +32,18 @@ interface DashboardHeroProps {
   primaryLabel: string;
   primaryValue: string;
   primaryTone?: 'default' | 'negative';
+  /** Valeur numerique brute du solde, requise pour activer dynamicBalanceColor */
+  primaryNumericValue?: number;
+  /** Colore la valeur principale selon un degrade rouge->vert sapin base sur primaryNumericValue, plutot que primaryTone */
+  dynamicBalanceColor?: boolean;
   /** Affiche un oeil pour masquer/afficher la valeur principale (montants sensibles) */
   maskable?: boolean;
+  /** Selecteur de chantier - affiche uniquement si projects.length > 1 */
+  projectSelector?: {
+    projects: { id: string; name: string }[];
+    selectedId: string;
+    onSelect: (id: string) => void;
+  };
   stats?: DashboardHeroStat[];
   actions?: DashboardHeroAction[];
 }
@@ -46,6 +54,22 @@ const STAT_TONE_CLASS: Record<NonNullable<DashboardHeroStat['tone']>, string> = 
   negative: 'text-[#FFB4A2]',
 };
 
+/**
+ * Degrade rouge -> orange -> jaune -> vert sapin pour le solde disponible.
+ * Seuils par tranches de 10M GNF ; seuls "negatif", "1 a 10M" et "10M a 20M"
+ * etaient specifies explicitement, le reste de la progression jusqu'au vert
+ * sapin a ete complete pour rester coherent - a ajuster si besoin.
+ */
+function getBalanceColor(value: number): string {
+  if (value < 0) return '#EF4444'; // rouge vif
+  if (value <= 10_000_000) return '#F87171'; // rouge clair
+  if (value <= 20_000_000) return '#FB923C'; // orange
+  if (value <= 30_000_000) return '#F5A623'; // orange ambre
+  if (value <= 40_000_000) return '#EAB308'; // jaune
+  if (value <= 50_000_000) return '#A3D639'; // jaune-vert
+  return '#1B4332'; // vert sapin
+}
+
 export function DashboardHero({
   eyebrow,
   title,
@@ -53,12 +77,17 @@ export function DashboardHero({
   primaryLabel,
   primaryValue,
   primaryTone = 'default',
+  primaryNumericValue,
+  dynamicBalanceColor = false,
   maskable = false,
+  projectSelector,
   stats = [],
   actions = [],
 }: DashboardHeroProps) {
   const [masked, setMasked] = useState(false);
   const displayValue = masked ? '•••• •••' : primaryValue;
+  const dynamicColor =
+    dynamicBalanceColor && !masked && primaryNumericValue !== undefined ? getBalanceColor(primaryNumericValue) : undefined;
 
   return (
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0B1330] via-[#122057] to-[#1B2E6E] px-6 pb-8 pt-7 shadow-xl shadow-[#0B1330]/20 sm:px-9 sm:pb-10 sm:pt-8 lg:px-10">
@@ -88,6 +117,26 @@ export function DashboardHero({
           <h1 className="mt-2 font-display text-xl font-semibold text-white sm:text-2xl">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm text-white/60">{subtitle}</p> : null}
 
+          {projectSelector && projectSelector.projects.length > 1 && (
+            <div className="mt-4">
+              <label htmlFor="hero-project-selector" className="text-[10px] uppercase tracking-wide text-white/45">
+                Chantier
+              </label>
+              <select
+                id="hero-project-selector"
+                value={projectSelector.selectedId}
+                onChange={(e) => projectSelector.onSelect(e.target.value)}
+                className="mt-1 block w-full max-w-xs rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#C9A24A] focus:outline-none"
+              >
+                {projectSelector.projects.map((p) => (
+                  <option key={p.id} value={p.id} className="text-ink-900">
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="mt-7">
             <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-white/50">
               <span>{primaryLabel}</span>
@@ -104,8 +153,9 @@ export function DashboardHero({
             </div>
             <p
               className={`mt-1 break-all font-ledger text-4xl font-bold tracking-tight sm:text-5xl ${
-                primaryTone === 'negative' && !masked ? 'text-[#FFB4A2]' : 'text-white'
+                dynamicColor ? '' : primaryTone === 'negative' && !masked ? 'text-[#FFB4A2]' : 'text-white'
               }`}
+              style={dynamicColor ? { color: dynamicColor } : undefined}
             >
               {displayValue}
             </p>

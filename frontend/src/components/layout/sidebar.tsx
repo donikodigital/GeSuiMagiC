@@ -1,4 +1,11 @@
-//frontend/src/components/layout/sidebar.tsx
+// ============================================================================
+// components/layout/sidebar.tsx - v1.1
+// Seul changement : h-4.5 w-4.5 -> h-4 w-4 (0.5 n'existe pas dans l'echelle
+// Tailwind par defaut ; sauf extension explicite dans ton tailwind.config,
+// cette classe etait silencieusement ignoree et l'icone retombait sur sa
+// taille par defaut au lieu de la taille voulue).
+// ============================================================================
+
 'use client';
 
 import Link from 'next/link';
@@ -13,12 +20,11 @@ export function Sidebar() {
   const { user } = useAuth();
   const items = useNavItems();
 
-
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-800 bg-ink-900 text-white lg:flex">
       <div className="flex h-16 items-center gap-2 border-b border-ink-800 px-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-safety-400 text-ink-900">
-          <HardHatIcon className="h-4.5 w-4.5" />
+          <HardHatIcon className="h-4 w-4" />
         </div>
         <span className="font-display text-base font-semibold">Suivi de Chantier</span>
       </div>
@@ -36,7 +42,7 @@ export function Sidebar() {
                 active ? 'bg-blueprint-700/60 text-white' : 'text-ink-300 hover:bg-ink-800 hover:text-white',
               )}
             >
-              <Icon className="h-4.5 w-4.5" />
+              <Icon className="h-4 w-4" />
               {item.label}
             </Link>
           );

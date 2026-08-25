@@ -1,3 +1,4 @@
+//frontend/src/app/(app)/materials/page.tsx
 'use client';
 
 import * as React from 'react';

@@ -1,3 +1,4 @@
+//frontend/src/services/anomalies.service.ts
 import { api } from '@/lib/api-client';
 import type { Anomaly, AnomalyStatus, PaginatedResponse } from '@/types/models';
 

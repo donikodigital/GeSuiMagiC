@@ -1,3 +1,11 @@
+// ============================================================================
+// hooks/use-nav-items.ts - v1.1
+// Seul changement : le "Reglages" du superadmin (parametres globaux de la
+// plateforme) devient "Parametres de securite", pour ne plus entrer en
+// collision avec le nouveau "Reglages" contextuel du chantier ajoute dans
+// topbar.tsx (menu burger, section "Chantier en cours").
+// ============================================================================
+
 import { Building2, HardHat, LayoutDashboard, Package, ScrollText, Settings, ShieldAlert, Users } from 'lucide-react';
 import { useAuth } from './use-auth';
 
@@ -18,7 +26,7 @@ export function useNavItems(): NavItem[] {
     { label: 'Catalogue', href: '/materials', icon: Package },
     { label: 'Anomalies', href: '/anomalies', icon: ShieldAlert },
     { label: "Journal d'audit", href: '/audit', icon: ScrollText },
-    { label: 'Reglages', href: '/settings', icon: Settings },
+    { label: 'Parametres de securite', href: '/settings', icon: Settings },
   ];
 
   const clientItems: NavItem[] = [

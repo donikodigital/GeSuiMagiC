@@ -1,14 +1,16 @@
-//frontend/src/components/dashboard/client-dashboard.tsx
 // ============================================================================
-// client-dashboard.tsx - v2.0
-// Le DashboardHero remplace les 4 StatCard du haut : le solde disponible
-// consolide devient la valeur "grand format" (avec oeil pour le masquer),
-// budget/verse/depense passent en puces secondaires. Cartes chantiers
-// affinees (hover, coins plus arrondis) mais logique inchangee.
+// client-dashboard.tsx - v2.2
+// Le solde/budget/verse/depense du hero refletent desormais UN chantier
+// selectionne (via le nouveau projectSelector de dashboard-hero.tsx), pas
+// une somme agregee de tous les chantiers - ca contredisait le principe de
+// portefeuille independant par chantier annonce partout ailleurs dans
+// l'app. Le selecteur n'apparait que si le client a 2 projets ou plus ;
+// avec un seul projet, comportement inchange (celui-ci est affiche direct).
 // ============================================================================
 
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { ArrowRight, Plus } from 'lucide-react';
 import { useProjects } from '@/hooks/use-projects';
@@ -21,38 +23,49 @@ import { DashboardHero } from './dashboard-hero';
 
 export function ClientDashboard() {
   const { data, isLoading, isError } = useProjects({ limit: 100 });
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string | undefined>(undefined);
 
   if (isLoading) return <PageSpinner />;
   if (isError) return <ErrorState message="Impossible de charger vos projets." />;
 
   const projects = data?.items ?? [];
-  const totals = projects.reduce(
-    (acc, p) => {
-      acc.budget += parseFloat(p.budget);
-      acc.deposited += parseFloat(p.wallet?.totalDeposited ?? '0');
-      acc.spent += parseFloat(p.wallet?.totalSpent ?? '0');
-      acc.balance += parseFloat(p.wallet?.balance ?? '0');
-      return acc;
-    },
-    { budget: 0, deposited: 0, spent: 0, balance: 0 },
-  );
-  const currency = projects[0]?.currency ?? 'GNF';
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? projects[0];
+  const currency = selectedProject?.currency ?? 'GNF';
+  const balance = parseFloat(selectedProject?.wallet?.balance ?? '0');
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <DashboardHero
         eyebrow="Tableau de bord · Client"
         title="Vos chantiers en un coup d'oeil"
-        subtitle="Solde consolide sur l'ensemble de vos projets."
+        subtitle={
+          projects.length > 1
+            ? 'Selectionnez un chantier pour voir son solde en detail.'
+            : 'Solde disponible pour ce chantier.'
+        }
         primaryLabel="Solde disponible"
-        primaryValue={formatMoney(totals.balance, currency)}
-        primaryTone={totals.balance < 0 ? 'negative' : 'default'}
+        primaryValue={selectedProject ? formatMoney(balance, currency) : formatMoney(0, currency)}
+        primaryNumericValue={balance}
+        dynamicBalanceColor
         maskable
-        stats={[
-          { label: 'Budget total', value: formatMoney(totals.budget, currency) },
-          { label: 'Total verse', value: formatMoney(totals.deposited, currency), tone: 'positive' },
-          { label: 'Total depense', value: formatMoney(totals.spent, currency) },
-        ]}
+        projectSelector={
+          selectedProject
+            ? {
+                projects: projects.map((p) => ({ id: p.id, name: p.name })),
+                selectedId: selectedProject.id,
+                onSelect: setSelectedProjectId,
+              }
+            : undefined
+        }
+        stats={
+          selectedProject
+            ? [
+                { label: 'Budget', value: formatMoney(selectedProject.budget, currency) },
+                { label: 'Total verse', value: formatMoney(selectedProject.wallet?.totalDeposited ?? '0', currency), tone: 'positive' },
+                { label: 'Total depense', value: formatMoney(selectedProject.wallet?.totalSpent ?? '0', currency) },
+              ]
+            : []
+        }
         actions={[{ label: 'Nouveau projet', href: '/projects/new', icon: Plus }]}
       />
 

@@ -1,4 +1,10 @@
-//frontend/src/app/(app)/projects/page.tsx
+// ============================================================================
+// app/(app)/projects/page.tsx - v1.1
+// Colonne Budget retiree pour le superviseur (deja fait ailleurs dans le
+// hero/l'apercu projet pour la meme raison). Sans elle, la table tient sans
+// scroll horizontal sur mobile - c'etait deja la colonne la plus large en trop.
+// ============================================================================
+
 'use client';
 
 import * as React from 'react';
@@ -45,32 +51,32 @@ export default function ProjectsPage() {
         cell: ({ row }) => (row.original.client ? `${row.original.client.firstName} ${row.original.client.lastName}` : '-'),
       });
     }
-    base.push(
-      {
-        header: 'Statut',
-        accessorKey: 'status',
-        cell: ({ row }) => <StatusBadge label={projectStatusMeta[row.original.status].label} tone={projectStatusMeta[row.original.status].tone} />,
-      },
-      {
+    base.push({
+      header: 'Statut',
+      accessorKey: 'status',
+      cell: ({ row }) => <StatusBadge label={projectStatusMeta[row.original.status].label} tone={projectStatusMeta[row.original.status].tone} />,
+    });
+    if (!isSupervisor) {
+      base.push({
         header: 'Budget',
         id: 'budget',
         cell: ({ row }) => <span className="font-ledger">{formatMoney(row.original.budget, row.original.currency)}</span>,
+      });
+    }
+    base.push({
+      header: 'Solde',
+      id: 'balance',
+      cell: ({ row }) => {
+        const balance = parseFloat(row.original.wallet?.balance ?? '0');
+        return (
+          <span className={`font-ledger font-medium ${balance < 0 ? 'text-clay-600' : 'text-ink-900'}`}>
+            {formatMoney(balance, row.original.currency)}
+          </span>
+        );
       },
-      {
-        header: 'Solde',
-        id: 'balance',
-        cell: ({ row }) => {
-          const balance = parseFloat(row.original.wallet?.balance ?? '0');
-          return (
-            <span className={`font-ledger font-medium ${balance < 0 ? 'text-clay-600' : 'text-ink-900'}`}>
-              {formatMoney(balance, row.original.currency)}
-            </span>
-          );
-        },
-      },
-    );
+    });
     return base;
-  }, [isSuperadmin]);
+  }, [isSuperadmin, isSupervisor]);
 
   return (
     <div>

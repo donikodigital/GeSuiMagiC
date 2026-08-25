@@ -1,3 +1,11 @@
+//backend/src/attachments/attachments.controller.ts - v1.1
+// Fix securite : findFor() n'avait aucune verification d'acces - un client
+// ou superviseur pouvait consulter les pieces jointes de n'importe quel
+// projet en changeant projectId/depositId/expenseId dans l'URL. Meme
+// logique d'isolation multi-tenant que ProjectsService.assignSupervisor et
+// SupervisorsService.findOne (superadmin bypass, client/superviseur verifies
+// contre le projet parent).
+
 import { Body, Controller, Delete, Get, Injectable, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -38,6 +46,9 @@ export class AttachmentsService {
       throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un justificatif doit etre rattache a un projet, un depot ou une depense.');
     }
 
+    // Meme isolation que la lecture : on ne peut attacher un fichier qu'a une cible que l'on peut soi-meme consulter.
+    await this.assertAccess(dto, actor);
+
     const attachment = await this.prisma.attachment.create({
       data: {
         fileName: dto.fileName,
@@ -64,7 +75,8 @@ export class AttachmentsService {
     return attachment;
   }
 
-  async findFor(filters: { projectId?: string; depositId?: string; expenseId?: string }) {
+  async findFor(filters: { projectId?: string; depositId?: string; expenseId?: string }, actor: AuthenticatedUser) {
+    await this.assertAccess(filters, actor);
     return this.prisma.attachment.findMany({ where: filters, orderBy: { createdAt: 'desc' } });
   }
 
@@ -100,6 +112,44 @@ export class AttachmentsService {
 
     return { removed: true };
   }
+
+  /**
+   * Verifie que l'acteur a le droit de voir/attacher un fichier sur cette cible.
+   * Resout projectId a partir de depositId/expenseId si necessaire, puis
+   * verifie l'appartenance du projet au client, ou l'affectation active du
+   * superviseur - meme logique d'isolation que le reste de l'app.
+   */
+  private async assertAccess(filters: { projectId?: string; depositId?: string; expenseId?: string }, actor: AuthenticatedUser) {
+    if (actor.role === 'SUPERADMIN') return;
+
+    let projectId = filters.projectId;
+    if (!projectId && filters.depositId) {
+      const deposit = await this.prisma.deposit.findUnique({ where: { id: filters.depositId }, select: { projectId: true } });
+      projectId = deposit?.projectId;
+    }
+    if (!projectId && filters.expenseId) {
+      const expense = await this.prisma.expense.findUnique({ where: { id: filters.expenseId }, select: { projectId: true } });
+      projectId = expense?.projectId;
+    }
+    if (!projectId) {
+      throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un projet, un depot ou une depense valide est requis.');
+    }
+
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        clientId: true,
+        supervisors: { where: { status: 'ACTIVE' }, select: { supervisorId: true } },
+      },
+    });
+    if (!project) throw AppException.notFound('Projet');
+
+    const allowed =
+      (actor.role === 'CLIENT' && project.clientId === actor.clientProfileId) ||
+      (actor.role === 'SUPERVISOR' && project.supervisors.some((s) => s.supervisorId === actor.supervisorProfileId));
+
+    if (!allowed) throw AppException.forbiddenProjectAccess();
+  }
 }
 
 @Controller('attachments')
@@ -117,8 +167,13 @@ export class AttachmentsController {
   }
 
   @Get()
-  async findFor(@Query('projectId') projectId?: string, @Query('depositId') depositId?: string, @Query('expenseId') expenseId?: string) {
-    return this.attachmentsService.findFor({ projectId, depositId, expenseId });
+  async findFor(
+    @Query('projectId') projectId: string | undefined,
+    @Query('depositId') depositId: string | undefined,
+    @Query('expenseId') expenseId: string | undefined,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.attachmentsService.findFor({ projectId, depositId, expenseId }, actor);
   }
 
   @Delete(':id')

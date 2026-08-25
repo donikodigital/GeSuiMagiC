@@ -1,20 +1,56 @@
-//frontend/src/app/(app)/projects/[id]/page.tsx
+// ============================================================================
+// app/(app)/projects/[id]/page.tsx - v1.2
+// - Carte "Budget" retiree pour le superviseur (isSupervisor) : 3 cartes au
+//   lieu de 4, meme logique que le hero de dashboard.
+// - Bug de debordement horizontal mobile corrige : les cartes n'avaient pas
+//   min-w-0, donc une grille a 2 colonnes avec un contenu un peu large
+//   poussait au-dela de la largeur d'ecran (visible seulement en zoomant,
+//   d'ou l'impression que "dezoomer" arrangeait les choses - le zoom ne
+//   change rien au DOM, il masquait juste le symptome).
+// - Cartes redessinees en version compacte (icone + libelle sur une ligne,
+//   valeur en dessous) pour rester lisibles a 3 ou 4 par ligne sur mobile,
+//   via une grille a N colonnes fixes (N = nombre de cartes actives).
+// ============================================================================
+//
+// - Les 4 StatCard generiques sont remplacees par des cartes custom avec
+//   icone dediee (Budget/Verse/Depense/Solde), pour un reperage plus rapide.
+// - "Total depense" affiche desormais une vraie barre de progression
+//   (meme logique moss/safety/clay que les cartes chantier du dashboard
+//   client) au lieu du texte plat "X% du budget".
+// - Le graphique "Vue financiere" colore chaque barre individuellement via
+//   <Cell> (recharts) plutot qu'une seule couleur uniforme.
+// - Le bouton d'action principal (Nouveau depot / Nouvelle depense) passe
+//   en accent or, coherent avec le CTA principal du hero de dashboard.
+// - La liste "Transactions recentes" affiche une puce fleche haut/bas par
+//   type au lieu de ne se distinguer que par la couleur du montant.
+//
+// NOTE : les couleurs des barres (#4a7c59 pour "Verse", #b5533c pour
+// "Depense") sont des approximations de tes tokens moss/clay - je n'ai pas
+// les valeurs hex exactes de ton tailwind.config. Ajuste-les si besoin.
+// ============================================================================
+
 'use client';
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Plus, ReceiptText } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Plus, ReceiptText, Wallet, ArrowDownToLine, ArrowUpFromLine, PiggyBank, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { useProjectFinancialSummary } from '@/hooks/use-projects';
 import { useDeposits } from '@/hooks/use-deposits';
 import { useExpenses } from '@/hooks/use-expenses';
 import { useAuth } from '@/hooks/use-auth';
-import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
 import { StatusBadge } from '@/components/ui/badge';
 import { formatDate, formatMoney, depositStatusMeta, expenseStatusMeta } from '@/lib/format';
+
+const BAR_COLORS: Record<string, string> = {
+  Budget: '#1e3a5f',
+  Verse: '#4a7c59',
+  Depense: '#b5533c',
+  Solde: '#c9a24a',
+};
 
 export default function ProjectOverviewPage() {
   const params = useParams<{ id: string }>();
@@ -26,11 +62,16 @@ export default function ProjectOverviewPage() {
   if (isLoading) return <PageSpinner />;
   if (isError || !summary) return <ErrorState message="Impossible de charger le resume financier." />;
 
+  const balance = parseFloat(summary.balance);
+  const usedPct = Math.max(0, Number(summary.budgetUsedPercent) || 0);
+  const usedPctClamped = Math.min(100, usedPct);
+  const balanceTone = balance < 0 ? 'clay' : usedPct > 90 ? 'safety' : 'moss';
+
   const chartData = [
     { label: 'Budget', value: parseFloat(summary.budget) },
     { label: 'Verse', value: parseFloat(summary.totalDeposited) },
     { label: 'Depense', value: parseFloat(summary.totalSpent) },
-    { label: 'Solde', value: parseFloat(summary.balance) },
+    { label: 'Solde', value: balance },
   ];
 
   const transactions = [
@@ -40,17 +81,67 @@ export default function ProjectOverviewPage() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 8);
 
+  const cardCount = isSupervisor ? 3 : 4;
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Budget" value={formatMoney(summary.budget, summary.currency)} />
-        <StatCard label="Total verse" value={formatMoney(summary.totalDeposited, summary.currency)} />
-        <StatCard label="Total depense" value={formatMoney(summary.totalSpent, summary.currency)} hint={`${summary.budgetUsedPercent}% du budget`} />
-        <StatCard
-          label="Solde disponible"
-          value={formatMoney(summary.balance, summary.currency)}
-          tone={parseFloat(summary.balance) < 0 ? 'clay' : summary.budgetUsedPercent > 90 ? 'safety' : 'moss'}
-        />
+      <div className="grid gap-3 sm:gap-4" style={{ gridTemplateColumns: `repeat(${cardCount}, minmax(0, 1fr))` }}>
+        {!isSupervisor && (
+          <Card className="min-w-0">
+            <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">
+              <div className="flex items-center gap-1.5 text-ink-500">
+                <Wallet className="h-3.5 w-3.5 shrink-0" />
+                <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Budget</p>
+              </div>
+              <p className="truncate font-ledger text-sm font-semibold text-ink-900 sm:text-base">{formatMoney(summary.budget, summary.currency)}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="min-w-0">
+          <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">
+            <div className="flex items-center gap-1.5 text-moss-600">
+              <ArrowDownToLine className="h-3.5 w-3.5 shrink-0" />
+              <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Total verse</p>
+            </div>
+            <p className="truncate font-ledger text-sm font-semibold text-ink-900 sm:text-base">{formatMoney(summary.totalDeposited, summary.currency)}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="min-w-0">
+          <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">
+            <div className="flex items-center gap-1.5 text-safety-500">
+              <ArrowUpFromLine className="h-3.5 w-3.5 shrink-0" />
+              <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Total depense</p>
+            </div>
+            <p className="truncate font-ledger text-sm font-semibold text-ink-900 sm:text-base">{formatMoney(summary.totalSpent, summary.currency)}</p>
+            <div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-concrete-light">
+                <div
+                  className={`h-full rounded-full ${usedPct > 90 ? 'bg-clay' : usedPct > 70 ? 'bg-safety-400' : 'bg-moss'}`}
+                  style={{ width: `${usedPctClamped}%` }}
+                />
+              </div>
+              <p className="mt-1 truncate text-[10px] text-ink-400 sm:text-xs">{usedPct}% du budget</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="min-w-0">
+          <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">
+            <div
+              className={`flex items-center gap-1.5 ${
+                balanceTone === 'clay' ? 'text-clay-600' : balanceTone === 'safety' ? 'text-safety-500' : 'text-moss-600'
+              }`}
+            >
+              <PiggyBank className="h-3.5 w-3.5 shrink-0" />
+              <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Solde disponible</p>
+            </div>
+            <p className={`truncate font-ledger text-sm font-semibold sm:text-base ${balance < 0 ? 'text-clay-600' : 'text-ink-900'}`}>
+              {formatMoney(summary.balance, summary.currency)}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {(Number(summary.pendingDepositsCount) > 0 || Number(summary.pendingExpensesCount) > 0) && (
@@ -72,14 +163,14 @@ export default function ProjectOverviewPage() {
         <div className="flex gap-2">
           {isClient && (
             <Link href={`/projects/${params.id}/deposits/new`}>
-              <Button size="sm">
+              <Button size="sm" className="bg-[#C9A24A] text-[#1B1400] hover:bg-[#D8B563]">
                 <Plus className="h-4 w-4" /> Nouveau depot
               </Button>
             </Link>
           )}
           {isSupervisor && (
             <Link href={`/projects/${params.id}/expenses/new`}>
-              <Button size="sm">
+              <Button size="sm" className="bg-[#C9A24A] text-[#1B1400] hover:bg-[#D8B563]">
                 <ReceiptText className="h-4 w-4" /> Nouvelle depense
               </Button>
             </Link>
@@ -99,7 +190,11 @@ export default function ProjectOverviewPage() {
                 <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#5d7398' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#5d7398' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`} />
                 <Tooltip formatter={(value: number) => formatMoney(value, summary.currency)} contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: '#d9d3c4' }} />
-                <Bar dataKey="value" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry) => (
+                    <Cell key={entry.label} fill={BAR_COLORS[entry.label] ?? '#1e3a5f'} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -115,12 +210,19 @@ export default function ProjectOverviewPage() {
             ) : (
               <ul className="divide-y divide-concrete">
                 {transactions.map((t) => (
-                  <li key={`${t.type}-${t.id}`} className="flex items-center justify-between px-5 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-ink-800">{t.type === 'Depot' ? 'Depot de fonds' : t.label}</p>
+                  <li key={`${t.type}-${t.id}`} className="flex items-center gap-3 px-5 py-3">
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                        t.type === 'Depot' ? 'bg-moss-50 text-moss-600' : 'bg-concrete-light text-ink-500'
+                      }`}
+                    >
+                      {t.type === 'Depot' ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-ink-800">{t.type === 'Depot' ? 'Depot de fonds' : t.label}</p>
                       <p className="text-xs text-ink-400">{formatDate(t.date)}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="shrink-0 text-right">
                       <p className={`font-ledger text-sm font-semibold ${t.amount >= 0 ? 'text-moss-600' : 'text-ink-800'}`}>
                         {t.amount >= 0 ? '+' : ''}
                         {formatMoney(t.amount, summary.currency)}

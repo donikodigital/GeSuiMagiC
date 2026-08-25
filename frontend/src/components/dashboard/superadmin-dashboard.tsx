@@ -1,4 +1,3 @@
-//frontend/src/components/dashboard/superadmin-dashboard.tsx
 // ============================================================================
 // superadmin-dashboard.tsx - v2.0
 // Ajout du DashboardHero (volume total + clients/projets/actifs) et d'une

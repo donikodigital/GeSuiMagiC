@@ -1,3 +1,9 @@
+//backend/src/categories/categories.controller.ts - v1.1
+// Seul changement : create() accepte desormais aussi SUPERVISOR (en plus de
+// SUPERADMIN) - un superviseur doit pouvoir ajouter une categorie manquante
+// en cours de saisie de depense, sans attendre un superadmin. update/
+// deactivate/reactivate restent reserves au superadmin.
+
 import { Body, Controller, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -47,7 +53,7 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Post()
-  @Roles(UserRole.SUPERADMIN)
+  @Roles(UserRole.SUPERADMIN, UserRole.SUPERVISOR)
   async create(@Body() dto: UpsertCategoryDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.categoriesService.create(dto, actor);
   }

@@ -1,4 +1,3 @@
-//frontend/src/app/(app)/projects/[id]/layout.tsx
 // ============================================================================
 // app/(app)/projects/[id]/layout.tsx - v1.1
 // Le bloc titre/badge/localisation/solde passe dans une mini-hero navy/or,
@@ -18,7 +17,6 @@ import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { ArrowLeft, Download, FileSpreadsheet } from 'lucide-react';
 import { useProject } from '@/hooks/use-projects';
-import { useAuth } from '@/hooks/use-auth';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
@@ -30,7 +28,6 @@ import { toast } from 'sonner';
 export default function ProjectDetailLayout({ children }: { children: React.ReactNode }) {
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
-  const { isClient, isSuperadmin } = useAuth();
   const { data: project, isLoading, isError } = useProject(params.id);
 
   if (isLoading) return <PageSpinner />;
@@ -42,10 +39,6 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
     { label: 'Depots', href: `${base}/deposits` },
     { label: 'Depenses', href: `${base}/expenses` },
     { label: 'Budgets', href: `${base}/budgets` },
-    { label: 'Documents', href: `${base}/documents` },
-    ...(isClient || isSuperadmin ? [{ label: 'Superviseurs', href: `${base}/supervisors` }] : []),
-    ...(isClient ? [{ label: 'Anomalies', href: `${base}/anomalies` }] : []),
-    ...(isClient || isSuperadmin ? [{ label: 'Reglages', href: `${base}/settings` }] : []),
   ];
 
   const balance = parseFloat(project.wallet?.balance ?? '0');
@@ -75,18 +68,18 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
           <circle cx="80" cy="80" r="46" fill="none" stroke="#E7D9AE" strokeWidth="1" />
         </svg>
 
-        <div className="relative flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-          <div>
+        <div className="relative flex min-w-0 flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-display text-xl font-semibold text-white sm:text-2xl">{project.name}</h1>
+              <h1 className="truncate font-display text-xl font-semibold text-white sm:text-2xl">{project.name}</h1>
               <StatusBadge label={projectStatusMeta[project.status].label} tone={projectStatusMeta[project.status].tone} />
             </div>
-            <p className="mt-1 text-sm text-white/60">
+            <p className="mt-1 truncate text-sm text-white/60">
               {[project.location, project.city, project.country].filter(Boolean).join(', ') || 'Localisation non renseignee'}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 shrink-0 items-center gap-3">
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-white/50">Solde disponible</p>
               <p className={cn('font-ledger text-xl font-bold sm:text-2xl', balance < 0 ? 'text-[#FFB4A2]' : 'text-white')}>

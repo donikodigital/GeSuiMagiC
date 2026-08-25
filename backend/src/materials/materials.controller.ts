@@ -1,3 +1,8 @@
+//backend/src/materials/materials.controller.ts - v1.1
+// Meme changement que categories.controller.ts : create() accepte
+// desormais SUPERVISOR en plus de SUPERADMIN, pour permettre d'ajouter un
+// materiau/element manquant depuis le formulaire de saisie de depense.
+
 import { Body, Controller, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -50,7 +55,7 @@ export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
 
   @Post()
-  @Roles(UserRole.SUPERADMIN)
+  @Roles(UserRole.SUPERADMIN, UserRole.SUPERVISOR)
   async create(@Body() dto: UpsertMaterialDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.materialsService.create(dto, actor);
   }

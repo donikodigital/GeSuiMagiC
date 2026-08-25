@@ -1,3 +1,13 @@
+// ============================================================================
+// app/(app)/projects/[id]/expenses/page.tsx - v1.1
+// Pour le superviseur uniquement : la table passe de 5-6 colonnes a
+// Date/Libelle/Total/Statut, et le clic sur une ligne ouvre une modale avec
+// le reste (quantite x P.U., fournisseur, reference facture, observation)
+// au lieu de naviguer vers la page detail. Client et Superadmin gardent le
+// comportement complet inchange (colonnes completes, navigation vers la
+// page detail, actions Valider/Refuser pour le client).
+// ============================================================================
+
 'use client';
 
 import * as React from 'react';
@@ -10,6 +20,7 @@ import { useCategories } from '@/hooks/use-catalog';
 import { useAuth } from '@/hooks/use-auth';
 import { DataTable } from '@/components/shared/data-table';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
+import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
@@ -25,14 +36,28 @@ export default function ProjectExpensesPage() {
   const [categoryId, setCategoryId] = React.useState('');
   const [page, setPage] = React.useState(1);
   const [rejectTarget, setRejectTarget] = React.useState<Expense | null>(null);
+  const [detailTarget, setDetailTarget] = React.useState<Expense | null>(null);
 
   const { data, isLoading, isError } = useExpenses(params.id, { page, limit: 20, status: status || undefined, categoryId: categoryId || undefined });
   const { data: categories } = useCategories();
   const approveMutation = useApproveExpense(params.id);
   const rejectMutation = useRejectExpense(params.id);
 
-  const columns = React.useMemo<ColumnDef<Expense, any>[]>(
-    () => [
+  const columns = React.useMemo<ColumnDef<Expense, any>[]>(() => {
+    if (isSupervisor) {
+      return [
+        { header: 'Date', accessorKey: 'date', cell: ({ row }) => formatDate(row.original.date) },
+        { header: 'Libelle', accessorKey: 'label', cell: ({ row }) => <span className="font-medium text-ink-900">{row.original.label}</span> },
+        { header: 'Total', id: 'total', cell: ({ row }) => <span className="font-ledger font-medium">{formatMoney(row.original.total, '')}</span> },
+        {
+          header: 'Statut',
+          accessorKey: 'status',
+          cell: ({ row }) => <StatusBadge label={expenseStatusMeta[row.original.status].label} tone={expenseStatusMeta[row.original.status].tone} />,
+        },
+      ];
+    }
+
+    const base: ColumnDef<Expense, any>[] = [
       { header: 'Date', accessorKey: 'date', cell: ({ row }) => formatDate(row.original.date) },
       {
         header: 'Libelle',
@@ -59,28 +84,28 @@ export default function ProjectExpensesPage() {
         accessorKey: 'status',
         cell: ({ row }) => <StatusBadge label={expenseStatusMeta[row.original.status].label} tone={expenseStatusMeta[row.original.status].tone} />,
       },
-      ...(isClient
-        ? [
-            {
-              header: '',
-              id: 'actions',
-              cell: ({ row }: { row: { original: Expense } }) =>
-                row.original.status === 'PENDING' ? (
-                  <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    <Button size="sm" variant="outline" onClick={() => approveMutation.mutate(row.original.id)} loading={approveMutation.isPending}>
-                      <Check className="h-3.5 w-3.5 text-moss-600" />
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setRejectTarget(row.original)}>
-                      <X className="h-3.5 w-3.5 text-clay-600" />
-                    </Button>
-                  </div>
-                ) : null,
-            },
-          ]
-        : []),
-    ],
-    [isClient, approveMutation],
-  );
+    ];
+
+    if (isClient) {
+      base.push({
+        header: '',
+        id: 'actions',
+        cell: ({ row }: { row: { original: Expense } }) =>
+          row.original.status === 'PENDING' ? (
+            <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <Button size="sm" variant="outline" onClick={() => approveMutation.mutate(row.original.id)} loading={approveMutation.isPending}>
+                <Check className="h-3.5 w-3.5 text-moss-600" />
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setRejectTarget(row.original)}>
+                <X className="h-3.5 w-3.5 text-clay-600" />
+              </Button>
+            </div>
+          ) : null,
+      });
+    }
+
+    return base;
+  }, [isClient, isSupervisor, approveMutation]);
 
   return (
     <div>
@@ -121,7 +146,7 @@ export default function ProjectExpensesPage() {
           isLoading={isLoading}
           emptyTitle="Aucune depense"
           emptyDescription={isSupervisor ? 'Enregistrez une depense pour ce chantier.' : 'Aucune depense enregistree pour ce chantier.'}
-          onRowClick={(row) => router.push(`/projects/${params.id}/expenses/${row.id}`)}
+          onRowClick={(row) => (isSupervisor ? setDetailTarget(row) : router.push(`/projects/${params.id}/expenses/${row.id}`))}
           meta={data?.meta}
           onPageChange={setPage}
         />
@@ -138,6 +163,34 @@ export default function ProjectExpensesPage() {
         danger
         isLoading={rejectMutation.isPending}
       />
+
+      {detailTarget && (
+        <Dialog open onClose={() => setDetailTarget(null)} title={detailTarget.label} description={detailTarget.category?.name}>
+          <dl className="space-y-3 text-sm">
+            <Field label="Date" value={formatDate(detailTarget.date)} />
+            <Field label="Quantite" value={`${detailTarget.quantity} ${detailTarget.unit} × ${formatMoney(detailTarget.unitPrice, '')}`} />
+            <Field label="Total" value={formatMoney(detailTarget.total, '')} />
+            <Field label="Fournisseur" value={detailTarget.supplier || '-'} />
+            <Field label="Reference facture" value={detailTarget.invoiceReference || '-'} />
+            {detailTarget.observation && <Field label="Observation" value={detailTarget.observation} full />}
+            <Field label="Statut" value={expenseStatusMeta[detailTarget.status].label} />
+          </dl>
+          <div className="mt-5 flex justify-end">
+            <Button variant="outline" onClick={() => setDetailTarget(null)}>
+              Fermer
+            </Button>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, value, full }: { label: string; value: string; full?: boolean }) {
+  return (
+    <div className={full ? undefined : 'flex items-center justify-between border-b border-concrete-light pb-2'}>
+      <dt className="text-xs text-ink-400">{label}</dt>
+      <dd className={full ? 'mt-0.5 text-ink-800' : 'text-ink-800'}>{value}</dd>
     </div>
   );
 }

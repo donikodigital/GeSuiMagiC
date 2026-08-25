@@ -1,14 +1,14 @@
-//frontend/src/components/dashboard/supervisor-dashboard.tsx
 // ============================================================================
-// supervisor-dashboard.tsx - v2.2
-// Le solde disponible (somme des soldes des chantiers affectes) devient la
-// valeur principale grand format, alignee sur Superadmin/Client. Chantiers
-// affectes et Chantiers actifs passent tous deux en puces secondaires, sur
-// la meme ligne (comportement deja force par dashboard-hero v1.2).
+// supervisor-dashboard.tsx - v2.3
+// Le solde disponible refletait avant une somme de tous les chantiers
+// affectes ; il reflete desormais UN chantier selectionne (selecteur
+// affiche des 2 chantiers). Chantiers affectes/actifs restent des
+// compteurs globaux, ca reste pertinent tel quel.
 // ============================================================================
 
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { ArrowRight, ReceiptText } from 'lucide-react';
 import { useProjects } from '@/hooks/use-projects';
@@ -21,6 +21,7 @@ import { DashboardHero } from './dashboard-hero';
 
 export function SupervisorDashboard() {
   const { data, isLoading, isError } = useProjects({ limit: 100 });
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string | undefined>(undefined);
 
   if (isLoading) return <PageSpinner />;
   if (isError) return <ErrorState message="Impossible de charger vos projets." />;
@@ -32,19 +33,30 @@ export function SupervisorDashboard() {
   }
 
   const activeCount = projects.filter((p) => p.status === 'ACTIVE').length;
-  const totalBalance = projects.reduce((sum, p) => sum + parseFloat(p.wallet?.balance ?? '0'), 0);
-  const currency = projects[0]?.currency ?? 'GNF';
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? projects[0];
+  const currency = selectedProject.currency ?? 'GNF';
+  const balance = parseFloat(selectedProject.wallet?.balance ?? '0');
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <DashboardHero
         eyebrow="Tableau de bord · Superviseur"
         title="Vos chantiers affectes"
-        subtitle="Enregistrez les depenses au fil de l'avancement des travaux."
+        subtitle={
+          projects.length > 1
+            ? 'Selectionnez un chantier pour voir son solde en detail.'
+            : "Enregistrez les depenses au fil de l'avancement des travaux."
+        }
         primaryLabel="Solde disponible"
-        primaryValue={formatMoney(totalBalance, currency)}
-        primaryTone={totalBalance < 0 ? 'negative' : 'default'}
+        primaryValue={formatMoney(balance, currency)}
+        primaryNumericValue={balance}
+        dynamicBalanceColor
         maskable
+        projectSelector={{
+          projects: projects.map((p) => ({ id: p.id, name: p.name })),
+          selectedId: selectedProject.id,
+          onSelect: setSelectedProjectId,
+        }}
         stats={[
           { label: 'Chantiers affectes', value: String(projects.length) },
           { label: 'Chantiers actifs', value: String(activeCount), tone: 'positive' },

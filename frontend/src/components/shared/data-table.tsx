@@ -1,4 +1,13 @@
-//frontend/src/components/shared/data-table.tsx
+// ============================================================================
+// components/shared/data-table.tsx - v1.1
+// Fix du scroll horizontal residuel : whitespace-nowrap forcait chaque
+// cellule a rester sur une ligne, donc des qu'un contenu (montant + devise,
+// badge de statut) depassait la largeur dispo, la table scrollait au lieu
+// de laisser le texte revenir a la ligne. Retire sur th/td - les cellules
+// peuvent desormais s'enrouler sur mobile plutot que forcer un scroll.
+// Padding legerement reduit sur mobile pour recuperer un peu de place.
+// ============================================================================
+
 'use client';
 
 import * as React from 'react';
@@ -42,7 +51,7 @@ export function DataTable<T>({
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th key={header.id} className="whitespace-nowrap px-4 py-3">
+                  <th key={header.id} className="px-3 py-2.5 sm:px-4 sm:py-3">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
@@ -57,7 +66,7 @@ export function DataTable<T>({
                 className={cn('transition-colors', onRowClick && 'cursor-pointer hover:bg-paper')}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="whitespace-nowrap px-4 py-3 text-ink-800">
+                  <td key={cell.id} className="px-3 py-2.5 text-ink-800 sm:px-4 sm:py-3">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

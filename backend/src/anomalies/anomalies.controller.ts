@@ -1,4 +1,10 @@
-//backend/src/anomalies/anomalies.controller.ts
+//backend/src/anomalies/anomalies.controller.ts - v1.1
+// Fix : le lien "Traiter le signalement" dans l'email pointait vers
+// /admin/anomalies/${anomaly.id}, une route qui n'a jamais existe (pas de
+// prefixe /admin dans l'app, et la page anomalies n'a pas de route par ID -
+// elle ouvre une boite de dialogue au clic sur une ligne). Redirige
+// desormais vers la vraie page liste /anomalies.
+
 import { Body, Controller, Get, Injectable, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -60,7 +66,7 @@ export class AnomaliesService {
           admin.email,
           project.name,
           dto.description,
-          `${this.config.get<string>('frontendUrl')}/admin/anomalies/${anomaly.id}`,
+          `${this.config.get<string>('frontendUrl')}/anomalies`,
         ),
         emailSubject: 'Nouvelle anomalie signalee',
       });

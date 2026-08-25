@@ -1,3 +1,4 @@
+//backend/src/materials/materials.module.ts
 import { Module } from '@nestjs/common';
 import { MaterialsController, MaterialsService } from './materials.controller';
 import { AuditModule } from '../audit/audit.module';
