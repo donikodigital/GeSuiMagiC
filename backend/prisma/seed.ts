@@ -1,3 +1,4 @@
+//backend/prisma/seed.ts
 /**
  * Seed du catalogue initial (marche guinéen) - sections 21 a 31 du cahier des charges.
  * Idempotent : peut etre relance sans dupliquer (upsert par nom unique).
@@ -275,8 +276,8 @@ async function main() {
   });
 
   console.log('Seed: superadmin par defaut...');
-  const superadminEmail = process.env.SEED_SUPERADMIN_EMAIL || 'superadmin@chantier.local';
-  const superadminPassword = process.env.SEED_SUPERADMIN_PASSWORD || 'ChangeMoi123!';
+  const superadminEmail = process.env.SEED_SUPERADMIN_EMAIL || 'thiernodoniko@gmail.com';
+  const superadminPassword = process.env.SEED_SUPERADMIN_PASSWORD || 'Lcd123456!';
   const existing = await prisma.user.findUnique({ where: { email: superadminEmail } });
   if (!existing) {
     const passwordHash = await argon2.hash(superadminPassword);
@@ -304,3 +305,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+//npm run prisma:seed

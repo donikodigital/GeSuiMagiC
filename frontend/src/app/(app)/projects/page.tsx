@@ -1,12 +1,13 @@
 // ============================================================================
-// app/(app)/projects/page.tsx - v1.2
-// Pour le superadmin uniquement : colonnes Statut et Solde retirees du
-// tableau, ne restent visibles que Projet/Client/Budget. Ces informations
-// restent accessibles via le clic sur la ligne, qui navigue deja vers la
-// page detail du projet (statut + solde y sont affiches dans le bandeau et
-// les cartes de resume). Client et superviseur : aucun changement, memes
-// colonnes qu'avant (Statut visible pour les deux, Budget masque pour le
-// superviseur, Solde visible pour les deux).
+// app/(app)/projects/page.tsx - v1.3
+// Bouton "Nouveau projet" reserve au client uniquement (isClient), plus au
+// superadmin - creer un chantier reste une decision du client, meme si le
+// superadmin garde la lecture et les autres actions. Aucun changement
+// backend : ProjectsController.create autorise toujours CLIENT et
+// SUPERADMIN, seul le bouton disparait cote UI.
+//
+// (Reprend la v1.2 telle quelle : colonnes Statut/Solde deja retirees pour
+// le superadmin, Budget deja retire pour le superviseur.)
 // ============================================================================
 
 'use client';
@@ -29,7 +30,7 @@ import type { Project } from '@/types/models';
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const { isSuperadmin, isSupervisor } = useAuth();
+  const { isSuperadmin, isSupervisor, isClient } = useAuth();
   const [search, setSearch] = React.useState('');
   const [page, setPage] = React.useState(1);
 
@@ -92,7 +93,7 @@ export default function ProjectsPage() {
         title={isSupervisor ? 'Mes chantiers affectes' : 'Projets'}
         description="Portefeuille financier independant par chantier."
         actions={
-          !isSupervisor && (
+          isClient && (
             <Link href="/projects/new">
               <Button>
                 <Plus className="h-4 w-4" /> Nouveau projet
