@@ -1,3 +1,4 @@
+// frontend/src/hooks/use-auth.ts
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,7 +11,7 @@ import { ApiError } from '@/lib/api-client';
 export function useAuth() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, accessToken, setSession, clear } = useAuthStore();
+  const { user, accessToken, hasHydrated, setSession, clear } = useAuthStore();
 
   const loginMutation = useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) => authService.login(email, password),
@@ -38,7 +39,11 @@ export function useAuth() {
 
   return {
     user,
+    // Tant que le store n'est pas rehydrate depuis le localStorage, on ne peut
+    // pas savoir si l'utilisateur est authentifie : le garde de route doit
+    // attendre `hasHydrated` avant de se fier a `isAuthenticated`.
     isAuthenticated: !!accessToken && !!user,
+    hasHydrated,
     login: loginMutation.mutateAsync,
     isLoggingIn: loginMutation.isPending,
     logout,

@@ -1,10 +1,9 @@
 // ============================================================================
-// app/(app)/layout.tsx - v1.1
-// Fix racine du scroll horizontal mobile : ajout de min-w-0 sur la colonne
-// de contenu (flex-1 seul ne suffit pas - un enfant flex garde min-width:
-// auto par defaut, donc tout contenu large en profondeur - ici la barre
-// d'onglets - pouvait pousser toute la ligne sidebar+contenu au-dela de
-// l'ecran). C'etait la cause commune aux deux pages signalees.
+// app/(app)/layout.tsx - v1.2
+// Fix deconnexion au refresh : le garde attendait `isAuthenticated` sans
+// attendre la rehydratation du store persist (Zustand), donc il redirigeait
+// vers /login pendant le court instant ou accessToken/user valaient encore
+// null au demarrage, avant meme la lecture du localStorage.
 // ============================================================================
 
 'use client';
@@ -18,18 +17,22 @@ import { PageSpinner } from '@/components/ui/misc';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
-  const [checked, setChecked] = React.useState(false);
+  const { isAuthenticated, hasHydrated } = useAuth();
 
   React.useEffect(() => {
+    // Tant que le store n'a pas fini de relire le localStorage, on ne sait
+    // pas encore si l'utilisateur est authentifie : ne rien decider.
+    if (!hasHydrated) return;
+
     if (!isAuthenticated) {
       router.replace('/login');
-    } else {
-      setChecked(true);
     }
-  }, [isAuthenticated, router]);
+  }, [hasHydrated, isAuthenticated, router]);
 
-  if (!checked) return <PageSpinner />;
+  // Ecran d'attente tant que l'hydratation n'est pas terminee, ou une fois
+  // terminee si l'utilisateur n'est pas authentifie (le temps que la
+  // redirection prenne effet).
+  if (!hasHydrated || !isAuthenticated) return <PageSpinner />;
 
   return (
     <div className="flex min-h-screen bg-paper">
