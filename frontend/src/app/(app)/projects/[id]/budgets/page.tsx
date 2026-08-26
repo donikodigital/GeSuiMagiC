@@ -1,10 +1,11 @@
+// frontend/src/app/(app)/projects/[id]/budgets/page.tsx - v2.0
 'use client';
 
 import * as React from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle, Plus, Tags } from 'lucide-react';
 import { budgetsService } from '@/services/budgets.service';
 import { useCategories } from '@/hooks/use-catalog';
 import { useAuth } from '@/hooks/use-auth';
@@ -19,7 +20,6 @@ import { ApiError } from '@/lib/api-client';
 export default function ProjectBudgetsPage() {
   const params = useParams<{ id: string }>();
   const { isClient, isSuperadmin } = useAuth();
-  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
   const { data: comparison, isLoading, isError } = useQuery({
@@ -41,7 +41,11 @@ export default function ProjectBudgetsPage() {
       </div>
 
       {!comparison || comparison.length === 0 ? (
-        <EmptyState title="Aucun budget defini" description="Definissez un budget previsionnel par categorie pour detecter les depassements." />
+        <EmptyState
+          icon={<Tags className="h-6 w-6" />}
+          title="Aucun budget defini"
+          description="Definissez un budget previsionnel par categorie pour detecter les depassements."
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {comparison.map((item) => {
@@ -49,23 +53,38 @@ export default function ProjectBudgetsPage() {
             const spent = parseFloat(item.spentAmount);
             const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
             return (
-              <Card key={item.categoryId}>
+              <Card key={item.categoryId} className="rounded-2xl">
                 <CardContent>
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-ink-900">{item.categoryName}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                          item.isExceeded ? 'bg-clay-50 text-clay-600' : 'bg-blueprint-50 text-blueprint-600'
+                        }`}
+                      >
+                        <Tags className="h-4 w-4" />
+                      </span>
+                      <p className="truncate font-medium text-ink-900">{item.categoryName}</p>
+                    </div>
                     {item.isExceeded && (
-                      <span className="flex items-center gap-1 text-xs font-medium text-clay-600">
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-clay-600">
                         <AlertTriangle className="h-3.5 w-3.5" /> Depasse
                       </span>
                     )}
                   </div>
-                  <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-concrete-light">
-                    <div className={`h-full rounded-full ${item.isExceeded ? 'bg-clay' : pct > 80 ? 'bg-safety-400' : 'bg-moss'}`} style={{ width: `${pct}%` }} />
+
+                  <p className={`mt-3 font-ledger text-lg font-bold ${item.isExceeded ? 'text-clay-600' : 'text-ink-900'}`}>
+                    {formatMoney(item.spentAmount, '')}
+                  </p>
+                  <p className="text-xs text-ink-400">depense sur {formatMoney(item.budgetAmount, '')}</p>
+
+                  <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-concrete-light">
+                    <div
+                      className={`h-full rounded-full transition-all ${item.isExceeded ? 'bg-clay' : pct > 80 ? 'bg-safety-400' : 'bg-moss'}`}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
-                  <div className="mt-2 flex justify-between text-xs text-ink-500">
-                    <span>{formatMoney(item.spentAmount, '')} depense</span>
-                    <span>sur {formatMoney(item.budgetAmount, '')}</span>
-                  </div>
+                  <p className="mt-1.5 text-right text-xs text-ink-400">{pct.toFixed(0)}%</p>
                 </CardContent>
               </Card>
             );

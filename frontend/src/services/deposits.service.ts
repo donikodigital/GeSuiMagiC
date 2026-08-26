@@ -1,3 +1,4 @@
+//frontend/src/services/deposits.service.ts
 import { api } from '@/lib/api-client';
 import type { Deposit, DepositStatus, PaginatedResponse, PaymentMethod } from '@/types/models';
 

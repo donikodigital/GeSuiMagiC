@@ -1,7 +1,8 @@
-//frontend/src/app/(app)/projects/[id]/documents/page.tsx
+// frontend/src/app/(app)/projects/[id]/documents/page.tsx - v1.1
 'use client';
 
 import { useParams } from 'next/navigation';
+import { FolderOpen } from 'lucide-react';
 import { AttachmentsSection } from '@/components/shared/attachments-section';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
@@ -11,18 +12,24 @@ export default function ProjectDocumentsPage() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600">
+          <FolderOpen className="h-4 w-4" />
+        </span>
         <div>
           <CardTitle>Documents du projet</CardTitle>
           <CardDescription>Devis, plans, contrats et documents administratifs generaux (hors justificatifs de depenses/depots).</CardDescription>
         </div>
       </CardHeader>
       <CardContent>
-        <AttachmentsSection target={{ projectId: params.id }} kindOptions={[
-          { value: 'document', label: 'Document administratif' },
-          { value: 'facture', label: 'Devis / Contrat' },
-          { value: 'photo', label: 'Photo du chantier' },
-        ]} />
+        <AttachmentsSection
+          target={{ projectId: params.id }}
+          kindOptions={[
+            { value: 'document', label: 'Document administratif' },
+            { value: 'facture', label: 'Devis / Contrat' },
+            { value: 'photo', label: 'Photo du chantier' },
+          ]}
+        />
       </CardContent>
     </Card>
   );

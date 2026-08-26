@@ -1,3 +1,4 @@
+//frontend/src/services/clients.service.ts
 import { api } from '@/lib/api-client';
 import type { ClientProfile, PaginatedResponse, Project } from '@/types/models';
 

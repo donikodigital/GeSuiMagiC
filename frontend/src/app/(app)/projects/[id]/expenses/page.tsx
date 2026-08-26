@@ -1,11 +1,13 @@
 // ============================================================================
-// app/(app)/projects/[id]/expenses/page.tsx - v1.3
-// Fix : le total affichait "1 500 000" sans devise (formatMoney appele avec
-// une devise vide en dur, faute d'un champ currency sur Expense - contrairement
-// a Deposit, une depense herite de la devise du projet parent). Ajout d'un
-// appel a useProjectFinancialSummary (deja utilise sur la page Apercu) pour
-// recuperer summary.currency, reutilise partout ou formatMoney(..., '')
-// etait appele en dur : colonne Total, Qte x P.U. et Total dans la modale.
+// app/(app)/projects/[id]/expenses/page.tsx - v2.0
+// DataTable (source de scroll horizontal, colonnes tronquees sur mobile
+// comme visible sur les captures precedentes des autres listes) remplacee
+// par ExpenseCard, meme pattern que DepositCard/AuditEntryCard. Filtres
+// Statut/Categorie empiles en colonne sur mobile au lieu de deborder.
+// Modale de detail : Field passe de flex justify-between (une ligne, sujet
+// a deborder) a un layout empile (label au-dessus, valeur en dessous,
+// break-words) - meme correction que sur la modale d'audit. Aucun
+// changement de logique (memes hooks, memes mutations).
 // ============================================================================
 
 'use client';
@@ -13,19 +15,17 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { type ColumnDef } from '@tanstack/react-table';
-import { Plus, Check, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useExpenses, useApproveExpense, useRejectExpense } from '@/hooks/use-expenses';
 import { useProjectFinancialSummary } from '@/hooks/use-projects';
 import { useCategories } from '@/hooks/use-catalog';
 import { useAuth } from '@/hooks/use-auth';
-import { DataTable } from '@/components/shared/data-table';
+import { ExpenseCard } from '@/components/expenses/expense-card';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
-import { StatusBadge } from '@/components/ui/badge';
-import { ErrorState } from '@/components/ui/misc';
+import { PageSpinner, ErrorState, EmptyState } from '@/components/ui/misc';
 import { expenseStatusMeta, formatDate, formatMoney } from '@/lib/format';
 import type { Expense, ExpenseStatus } from '@/types/models';
 
@@ -45,40 +45,32 @@ export default function ProjectExpensesPage() {
   const approveMutation = useApproveExpense(params.id);
   const rejectMutation = useRejectExpense(params.id);
 
-  const columns = React.useMemo<ColumnDef<Expense, any>[]>(
-    () => [
-      { header: 'Date', accessorKey: 'date', cell: ({ row }) => <span className="text-xs sm:text-sm">{formatDate(row.original.date)}</span> },
-      {
-        header: 'Libelle',
-        id: 'label',
-        cell: ({ row }) => (
-          <div className="max-w-[110px] sm:max-w-none">
-            <p className="truncate text-xs font-medium text-ink-900 sm:text-sm">{row.original.label}</p>
-            <p className="truncate text-[10px] text-ink-400 sm:text-xs">{row.original.category?.name}</p>
-          </div>
-        ),
-      },
-      {
-        header: 'Total',
-        id: 'total',
-        cell: ({ row }) => <span className="font-ledger text-xs font-medium sm:text-sm">{formatMoney(row.original.total, currency)}</span>,
-      },
-    ],
-    [currency],
-  );
-
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">
-          <Select value={status} onChange={(e) => { setStatus(e.target.value as ExpenseStatus | ''); setPage(1); }} className="w-44">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Select
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value as ExpenseStatus | '');
+              setPage(1);
+            }}
+            className="w-full sm:w-44"
+          >
             <option value="">Tous les statuts</option>
             <option value="PENDING">En attente</option>
             <option value="APPROVED">Validees</option>
             <option value="REJECTED">Refusees</option>
             <option value="CANCELLED">Annulees</option>
           </Select>
-          <Select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setPage(1); }} className="w-48">
+          <Select
+            value={categoryId}
+            onChange={(e) => {
+              setCategoryId(e.target.value);
+              setPage(1);
+            }}
+            className="w-full sm:w-48"
+          >
             <option value="">Toutes les categories</option>
             {categories?.map((c) => (
               <option key={c.id} value={c.id}>
@@ -90,7 +82,7 @@ export default function ProjectExpensesPage() {
 
         {isSupervisor && (
           <Link href={`/projects/${params.id}/expenses/new`}>
-            <Button size="sm">
+            <Button size="sm" className="w-full sm:w-auto">
               <Plus className="h-4 w-4" /> Nouvelle depense
             </Button>
           </Link>
@@ -99,17 +91,42 @@ export default function ProjectExpensesPage() {
 
       {isError ? (
         <ErrorState message="Impossible de charger les depenses." />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={data?.items ?? []}
-          isLoading={isLoading}
-          emptyTitle="Aucune depense"
-          emptyDescription={isSupervisor ? 'Enregistrez une depense pour ce chantier.' : 'Aucune depense enregistree pour ce chantier.'}
-          onRowClick={(row) => setDetailTarget(row)}
-          meta={data?.meta}
-          onPageChange={setPage}
+      ) : isLoading ? (
+        <PageSpinner />
+      ) : (data?.items.length ?? 0) === 0 ? (
+        <EmptyState
+          title="Aucune depense"
+          description={isSupervisor ? 'Enregistrez une depense pour ce chantier.' : 'Aucune depense enregistree pour ce chantier.'}
         />
+      ) : (
+        <>
+          <div className="space-y-3">
+            {(data?.items ?? []).map((expense) => (
+              <ExpenseCard key={expense.id} expense={expense} currency={currency} onClick={() => setDetailTarget(expense)} />
+            ))}
+          </div>
+
+          {data?.meta && data.meta.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-ink-400">
+                {data.meta.total} resultat{data.meta.total > 1 ? 's' : ''} - page {data.meta.page} sur {data.meta.totalPages}
+              </p>
+              <div className="flex gap-1.5">
+                <Button variant="outline" size="sm" disabled={data.meta.page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={data.meta.page >= data.meta.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <ReasonDialog
@@ -132,7 +149,7 @@ export default function ProjectExpensesPage() {
             <Field label="Total" value={formatMoney(detailTarget.total, currency)} />
             <Field label="Fournisseur" value={detailTarget.supplier || '-'} />
             <Field label="Reference facture" value={detailTarget.invoiceReference || '-'} />
-            {detailTarget.observation && <Field label="Observation" value={detailTarget.observation} full />}
+            {detailTarget.observation && <Field label="Observation" value={detailTarget.observation} />}
             <Field label="Statut" value={expenseStatusMeta[detailTarget.status].label} />
           </dl>
 
@@ -145,7 +162,13 @@ export default function ProjectExpensesPage() {
                 >
                   <Check className="h-4 w-4" /> Valider la depense
                 </Button>
-                <Button variant="outline" onClick={() => { setRejectTarget(detailTarget); setDetailTarget(null); }}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setRejectTarget(detailTarget);
+                    setDetailTarget(null);
+                  }}
+                >
                   <X className="h-4 w-4" /> Refuser
                 </Button>
               </>
@@ -165,11 +188,11 @@ export default function ProjectExpensesPage() {
   );
 }
 
-function Field({ label, value, full }: { label: string; value: string; full?: boolean }) {
+function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className={full ? undefined : 'flex items-center justify-between border-b border-concrete-light pb-2'}>
-      <dt className="text-xs text-ink-400">{label}</dt>
-      <dd className={full ? 'mt-0.5 text-ink-800' : 'text-ink-800'}>{value}</dd>
+    <div className="border-b border-concrete-light pb-2">
+      <dt className="text-xs font-medium uppercase tracking-wide text-ink-400">{label}</dt>
+      <dd className="mt-0.5 break-words text-ink-800">{value}</dd>
     </div>
   );
 }

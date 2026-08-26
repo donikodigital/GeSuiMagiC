@@ -1,4 +1,4 @@
-//frontend/src/app/(app)/projects/[id]/deposits/new/page.tsx
+// frontend/src/app/(app)/projects/[id]/deposits/new/page.tsx - v2.0
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -6,8 +6,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
+import { CalendarRange, HandCoins } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FormField, Input, Select, Textarea } from '@/components/ui/input';
 import { useCreateDeposit } from '@/hooks/use-deposits';
@@ -28,6 +29,14 @@ type FormValues = z.infer<typeof schema>;
 
 interface ProjectSupervisorRow {
   supervisor: { id: string; firstName: string; lastName: string };
+}
+
+function SectionIcon({ icon: Icon }: { icon: React.ComponentType<{ className?: string }> }) {
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600">
+      <Icon className="h-4 w-4" />
+    </span>
+  );
 }
 
 function NewDepositPageContent() {
@@ -52,12 +61,19 @@ function NewDepositPageContent() {
   };
 
   return (
-    <div className="mx-auto max-w-lg">
+    <div className="mx-auto max-w-lg pb-4">
       <PageHeader title="Nouveau depot" description="Le superviseur beneficiaire devra valider ce depot avant qu'il n'alimente le solde." />
 
-      <Card>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <Card className="border-blueprint-200 bg-blueprint-50/40">
+          <CardHeader className="items-start gap-3 border-blueprint-200">
+            <SectionIcon icon={HandCoins} />
+            <div>
+              <CardTitle>Beneficiaire et montant</CardTitle>
+              <CardDescription>Le depot alimentera le solde une fois valide par le superviseur.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <FormField label="Superviseur beneficiaire" htmlFor="supervisorId" required error={errors.supervisorId?.message}>
               <Select id="supervisorId" {...register('supervisorId')} defaultValue="">
                 <option value="" disabled>
@@ -75,10 +91,27 @@ function NewDepositPageContent() {
             </FormField>
 
             <FormField label="Montant" htmlFor="amount" required error={errors.amount?.message}>
-              <Input id="amount" type="number" placeholder="50000000" {...register('amount')} />
+              <Input
+                id="amount"
+                type="number"
+                placeholder="50000000"
+                className="font-ledger text-base font-semibold"
+                {...register('amount')}
+              />
             </FormField>
+          </CardContent>
+        </Card>
 
-            <div className="grid grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="items-start gap-3">
+            <SectionIcon icon={CalendarRange} />
+            <div>
+              <CardTitle>Details du versement</CardTitle>
+              <CardDescription>Date, mode et references utiles au suivi.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label="Date" htmlFor="date">
                 <Input id="date" type="date" {...register('date')} />
               </FormField>
@@ -104,18 +137,20 @@ function NewDepositPageContent() {
             <FormField label="Observation" htmlFor="observation">
               <Textarea id="observation" rows={3} {...register('observation')} />
             </FormField>
+          </CardContent>
+        </Card>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => router.back()}>
-                Annuler
-              </Button>
-              <Button type="submit" loading={createDeposit.isPending}>
-                Enregistrer le depot
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+        <div className="sticky bottom-0 z-10 -mx-4 border-t border-concrete bg-paper/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Annuler
+            </Button>
+            <Button type="submit" loading={createDeposit.isPending}>
+              Enregistrer le depot
+            </Button>
+          </div>
+        </div>
+      </form>
     </div>
   );
 }

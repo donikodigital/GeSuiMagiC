@@ -1,9 +1,25 @@
-//frontend/src/app/(app)/projects/[id]/expenses/[expenseId]/page.tsx
+// ============================================================================
+// app/(app)/projects/[id]/expenses/[expenseId]/page.tsx - v1.1
+// - En-tete : icone ronde coloree selon le statut (meme convention que
+//   AuditEntryCard/ExpenseCard) au lieu d'un simple bloc texte.
+// - Grille de champs : grid-cols-2 fixe (risque de tassement sur mobile
+//   etroit) remplacee par grid-cols-1 sm:grid-cols-2, mise sur fond bg-paper
+//   pour la detacher visuellement du reste de la carte ; champs longs
+//   ("Enregistree par", Observation, Motif) passent en pleine largeur via
+//   sm:col-span-2.
+// - Bloc "Paiement fournisseur" : icone CreditCard ajoutee, PaymentStatusEditor
+//   passe en colonne sur mobile (Select/input/bouton pleine largeur) au lieu
+//   de flex-wrap qui pouvait ecraser les elements.
+// - Icone Truck ajoutee au-dessus de la section pieces jointes pour reperage
+//   visuel rapide, coherent avec le reste des sections.
+// Aucun changement de logique/mutations.
+// ============================================================================
+
 'use client';
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Check, X, Pencil, Ban } from 'lucide-react';
+import { ArrowLeft, Ban, Check, CreditCard, Paperclip, Pencil, ReceiptText, X } from 'lucide-react';
 import { useExpense, useApproveExpense, useRejectExpense, useCancelExpense, useUpdateExpensePayment } from '@/hooks/use-expenses';
 import { useAuth } from '@/hooks/use-auth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,6 +36,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api-client';
 import type { ExpensePaymentStatus } from '@/types/models';
+
+const TONE_ICON_BG: Record<string, string> = {
+  moss: 'bg-moss-50 text-moss-600',
+  safety: 'bg-safety-50 text-safety-500',
+  clay: 'bg-clay-50 text-clay-600',
+  ink: 'bg-ink-50 text-ink-600',
+  blueprint: 'bg-blueprint-50 text-blueprint-700',
+};
 
 export default function ExpenseDetailPage() {
   const params = useParams<{ id: string; expenseId: string }>();
@@ -52,37 +76,46 @@ export default function ExpenseDetailPage() {
 
   const canAct = isClient && expense.status === 'PENDING';
   const canUpdatePayment = (isSupervisor || isSuperadmin) && expense.status === 'APPROVED';
+  const statusTone = expenseStatusMeta[expense.status].tone;
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl pb-4">
       <button onClick={() => router.back()} className="mb-3 inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-800">
         <ArrowLeft className="h-4 w-4" /> Retour
       </button>
 
       <Card>
         <CardContent className="space-y-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-ink-400">{expense.category?.name}</p>
-              <p className="font-display text-lg font-semibold text-ink-900">{expense.label}</p>
-              <p className="font-ledger text-2xl font-semibold text-ink-900">{formatMoney(expense.total, '')}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${TONE_ICON_BG[statusTone]}`}>
+                <ReceiptText className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-xs uppercase tracking-wide text-ink-400">{expense.category?.name}</p>
+                <p className="truncate font-display text-lg font-semibold text-ink-900">{expense.label}</p>
+                <p className="font-ledger text-2xl font-bold text-ink-900">{formatMoney(expense.total, '')}</p>
+              </div>
             </div>
-            <StatusBadge label={expenseStatusMeta[expense.status].label} tone={expenseStatusMeta[expense.status].tone} />
+            <StatusBadge label={expenseStatusMeta[expense.status].label} tone={statusTone} className="shrink-0" />
           </div>
 
-          <dl className="grid grid-cols-2 gap-4 text-sm">
+          <dl className="grid grid-cols-1 gap-4 rounded-card bg-paper px-4 py-3.5 text-sm sm:grid-cols-2">
             <Field label="Date" value={formatDateTime(expense.date)} />
             <Field label="Quantite" value={`${expense.quantity} ${expense.unit} × ${formatMoney(expense.unitPrice, '')}`} />
             <Field label="Fournisseur" value={expense.supplier || '-'} />
             <Field label="Reference facture" value={expense.invoiceReference || '-'} />
-            {expense.supervisor && <Field label="Enregistree par" value={`${expense.supervisor.firstName} ${expense.supervisor.lastName}`} />}
+            {expense.supervisor && <Field label="Enregistree par" value={`${expense.supervisor.firstName} ${expense.supervisor.lastName}`} full />}
             {expense.observation && <Field label="Observation" value={expense.observation} full />}
             {expense.rejectionReason && <Field label="Motif" value={expense.rejectionReason} full />}
           </dl>
 
-          <div className="rounded-card border border-concrete bg-paper px-4 py-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Paiement fournisseur</p>
+          <div className="rounded-card border border-concrete bg-white px-4 py-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-ink-400" />
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Paiement fournisseur</p>
+              </div>
               <StatusBadge label={expensePaymentStatusMeta[expense.paymentStatus].label} tone={expensePaymentStatusMeta[expense.paymentStatus].tone} />
             </div>
             {expense.paymentStatus === 'PARTIAL' && (
@@ -102,7 +135,10 @@ export default function ExpenseDetailPage() {
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-400">Pieces jointes</p>
+            <div className="mb-2 flex items-center gap-2">
+              <Paperclip className="h-4 w-4 text-ink-400" />
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Pieces jointes</p>
+            </div>
             <AttachmentsSection target={{ expenseId: expense.id }} readOnly={expense.isLocked && !isSuperadmin} />
           </div>
 
@@ -181,8 +217,8 @@ function PaymentStatusEditor({
   const [amount, setAmount] = React.useState('');
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-concrete-light pt-3">
-      <Select value={status} onChange={(e) => setStatus(e.target.value as ExpensePaymentStatus)} className="w-44">
+    <div className="mt-3 flex flex-col gap-2 border-t border-concrete-light pt-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <Select value={status} onChange={(e) => setStatus(e.target.value as ExpensePaymentStatus)} className="w-full sm:w-44">
         <option value="PAID_FULL">Paye totalement</option>
         <option value="PARTIAL">Acompte / avance</option>
         <option value="CREDIT">A credit / differe</option>
@@ -193,10 +229,16 @@ function PaymentStatusEditor({
           placeholder="Montant verse"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="h-9 w-40 rounded-md border border-concrete-dark px-2 text-sm"
+          className="h-10 w-full rounded-md border border-concrete-dark px-3 text-sm sm:w-40"
         />
       )}
-      <Button size="sm" variant="outline" loading={isLoading} onClick={() => onSave(status, status === 'PARTIAL' ? Number(amount) : undefined)}>
+      <Button
+        size="sm"
+        variant="outline"
+        loading={isLoading}
+        onClick={() => onSave(status, status === 'PARTIAL' ? Number(amount) : undefined)}
+        className="w-full sm:w-auto"
+      >
         Mettre a jour
       </Button>
     </div>
@@ -205,9 +247,9 @@ function PaymentStatusEditor({
 
 function Field({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
-    <div className={full ? 'col-span-2' : undefined}>
+    <div className={full ? 'sm:col-span-2' : undefined}>
       <dt className="text-xs text-ink-400">{label}</dt>
-      <dd className="mt-0.5 text-ink-800">{value}</dd>
+      <dd className="mt-0.5 break-words text-ink-800">{value}</dd>
     </div>
   );
 }

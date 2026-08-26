@@ -1,4 +1,24 @@
-//frontend/src/app/(app)/projects/new/page.tsx
+// ============================================================================
+// app/(app)/projects/new/page.tsx - v2.0
+// Refonte visuelle complete du formulaire de creation de projet, aucun
+// changement de logique/validation (meme schema zod, memes champs envoyes
+// a useCreateProject).
+//
+// - 4 cartes distinctes au lieu de 3, chacune avec icone + sous-titre
+//   (Informations generales / Localisation / Planning / Budget) pour une
+//   meilleure lecture du formulaire, qui etait plat et peu guide.
+// - Regroupement de "Cout estimatif" + "Devise" + "Budget alloue" dans une
+//   carte Budget dediee et visuellement distincte (fond blueprint clair),
+//   plus coherente qu'eparpilles entre "Planning et budget".
+// - Grilles 2 colonnes forcees remplacees par grid-cols-1 sm:grid-cols-2 -
+//   les champs ne s'ecrasaient plus des mobile mais restaient sur 2
+//   colonnes fixes, ce qui tronquait les labels longs sur petit ecran.
+// - Suffixes visuels (m², devise) sur Superficie et Budget alloue pour
+//   clarifier l'unite sans alourdir le label.
+// - Barre d'actions (Annuler / Creer) en sticky bottom sur mobile, pour
+//   rester accessible sans avoir a rescroller tout le formulaire.
+// ============================================================================
+
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -6,8 +26,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
+import { Building2, CalendarRange, MapPin, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FormField, Input, Select, Textarea } from '@/components/ui/input';
 import { useCreateProject } from '@/hooks/use-projects';
@@ -35,6 +56,14 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
+function SectionIcon({ icon: Icon }: { icon: React.ComponentType<{ className?: string }> }) {
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600">
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+}
+
 function NewProjectPageContent() {
   const router = useRouter();
   const { isSuperadmin } = useAuth();
@@ -49,8 +78,11 @@ function NewProjectPageContent() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { currency: 'GNF' } });
+
+  const currency = watch('currency');
 
   const onSubmit = async (values: FormValues) => {
     const project = await createProject.mutateAsync({
@@ -64,14 +96,19 @@ function NewProjectPageContent() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl pb-4">
       <PageHeader title="Nouveau projet" description="Chaque projet possede son propre portefeuille financier, totalement independant des autres." />
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <Card>
+          <CardHeader className="items-start gap-3">
+            <SectionIcon icon={Building2} />
+            <div>
+              <CardTitle>Informations generales</CardTitle>
+              <CardDescription>Le nom et la nature du chantier.</CardDescription>
+            </div>
+          </CardHeader>
           <CardContent className="space-y-4">
-            <h3 className="font-display text-sm font-semibold text-ink-700">Informations generales</h3>
-
             {isSuperadmin && (
               <FormField label="Client" htmlFor="clientId" required error={errors.clientId?.message}>
                 <Select id="clientId" {...register('clientId')} defaultValue="">
@@ -91,7 +128,7 @@ function NewProjectPageContent() {
               <Input id="name" placeholder="Villa T4 - Conakry" {...register('name')} />
             </FormField>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label="Type de construction" htmlFor="constructionType">
                 <Input id="constructionType" placeholder="Villa, immeuble..." {...register('constructionType')} />
               </FormField>
@@ -111,12 +148,18 @@ function NewProjectPageContent() {
         </Card>
 
         <Card>
+          <CardHeader className="items-start gap-3">
+            <SectionIcon icon={MapPin} />
+            <div>
+              <CardTitle>Localisation</CardTitle>
+              <CardDescription>Ou se trouve le chantier.</CardDescription>
+            </div>
+          </CardHeader>
           <CardContent className="space-y-4">
-            <h3 className="font-display text-sm font-semibold text-ink-700">Localisation</h3>
             <FormField label="Adresse / lieu-dit" htmlFor="location">
               <Input id="location" {...register('location')} />
             </FormField>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label="Ville" htmlFor="city">
                 <Input id="city" placeholder="Conakry" {...register('city')} />
               </FormField>
@@ -124,9 +167,12 @@ function NewProjectPageContent() {
                 <Input id="country" placeholder="Guinee" {...register('country')} />
               </FormField>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Superficie (m²)" htmlFor="surfaceArea">
-                <Input id="surfaceArea" type="number" step="0.01" {...register('surfaceArea')} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Superficie" htmlFor="surfaceArea">
+                <div className="relative">
+                  <Input id="surfaceArea" type="number" step="0.01" className="pr-10" {...register('surfaceArea')} />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400">m²</span>
+                </div>
               </FormField>
               <FormField label="Nombre de pieces" htmlFor="roomCount">
                 <Input id="roomCount" type="number" {...register('roomCount')} />
@@ -136,9 +182,15 @@ function NewProjectPageContent() {
         </Card>
 
         <Card>
-          <CardContent className="space-y-4">
-            <h3 className="font-display text-sm font-semibold text-ink-700">Planning et budget</h3>
-            <div className="grid grid-cols-2 gap-4">
+          <CardHeader className="items-start gap-3">
+            <SectionIcon icon={CalendarRange} />
+            <div>
+              <CardTitle>Planning</CardTitle>
+              <CardDescription>Dates previsionnelles du chantier.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label="Date de debut prevue" htmlFor="startDate">
                 <Input id="startDate" type="date" {...register('startDate')} />
               </FormField>
@@ -146,7 +198,19 @@ function NewProjectPageContent() {
                 <Input id="endDate" type="date" {...register('endDate')} />
               </FormField>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+          </CardContent>
+        </Card>
+
+        <Card className="border-blueprint-200 bg-blueprint-50/40">
+          <CardHeader className="items-start gap-3 border-blueprint-200">
+            <SectionIcon icon={Wallet} />
+            <div>
+              <CardTitle>Budget</CardTitle>
+              <CardDescription>Le budget de reference pour le suivi financier du chantier.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label="Cout estimatif" htmlFor="estimatedCost">
                 <Input id="estimatedCost" type="number" {...register('estimatedCost')} />
               </FormField>
@@ -158,19 +222,33 @@ function NewProjectPageContent() {
                 </Select>
               </FormField>
             </div>
+
             <FormField label="Budget alloue" htmlFor="budget" required error={errors.budget?.message} hint="C'est le budget de reference pour le suivi financier du chantier.">
-              <Input id="budget" type="number" placeholder="800000000" {...register('budget')} />
+              <div className="relative">
+                <Input
+                  id="budget"
+                  type="number"
+                  placeholder="800000000"
+                  className="pr-16 font-ledger text-base font-semibold"
+                  {...register('budget')}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-blueprint-600">
+                  {currency || 'GNF'}
+                </span>
+              </div>
             </FormField>
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => router.back()}>
-            Annuler
-          </Button>
-          <Button type="submit" loading={createProject.isPending}>
-            Creer le projet
-          </Button>
+        <div className="sticky bottom-0 z-10 -mx-4 border-t border-concrete bg-paper/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Annuler
+            </Button>
+            <Button type="submit" loading={createProject.isPending}>
+              Creer le projet
+            </Button>
+          </div>
         </div>
       </form>
     </div>

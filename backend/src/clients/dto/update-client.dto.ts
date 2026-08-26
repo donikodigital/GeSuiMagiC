@@ -1,3 +1,4 @@
+//backend/src/clients/dto/update-client.dto.ts
 import { IsOptional, IsString } from 'class-validator';
 
 /** Champs modifiables par le superadmin. */

@@ -1,15 +1,24 @@
+// frontend/src/app/(app)/clients/[id]/page.tsx - v1.1
+// Ajout d'un bouton "Modifier" ouvrant EditClientDialog, pour que le
+// superadmin puisse renseigner/corriger profession, adresse et les autres
+// champs de UpdateClientDto directement depuis la fiche client (jusque-la
+// seul le client lui-meme pouvait editer une partie de ces infos via
+// PATCH /clients/me). Aucun changement sur suspendre/reactiver.
+
 'use client';
 
+import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, Pencil } from 'lucide-react';
 import { clientsService } from '@/services/clients.service';
 import { useProjects } from '@/hooks/use-projects';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
+import { EditClientDialog } from '@/components/clients/edit-client-dialog';
 import { userStatusMeta, projectStatusMeta, formatMoney, formatDate } from '@/lib/format';
 import { ApiError } from '@/lib/api-client';
 import Link from 'next/link';
@@ -19,6 +28,7 @@ function ClientDetailPageContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [editOpen, setEditOpen] = React.useState(false);
 
   const { data: client, isLoading, isError } = useQuery({
     queryKey: ['clients', params.id],
@@ -65,6 +75,9 @@ function ClientDetailPageContent() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-4 w-4" /> Modifier
+          </Button>
           {client.isActive ? (
             <Button variant="danger" size="sm" onClick={() => suspendMutation.mutate()} loading={suspendMutation.isPending}>
               <Ban className="h-4 w-4" /> Suspendre
@@ -114,6 +127,8 @@ function ClientDetailPageContent() {
           </CardContent>
         </Card>
       </div>
+
+      <EditClientDialog open={editOpen} onClose={() => setEditOpen(false)} client={client} />
     </div>
   );
 }

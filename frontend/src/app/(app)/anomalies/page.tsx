@@ -1,31 +1,20 @@
-//frontend/src/app/(app)/anomalies/page.tsx
+// frontend/src/app/(app)/anomalies/page.tsx - v2.0
 'use client';
 
 import * as React from 'react';
-import { type ColumnDef } from '@tanstack/react-table';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { anomaliesService } from '@/services/anomalies.service';
 import { PageHeader } from '@/components/shared/page-header';
-import { DataTable } from '@/components/shared/data-table';
+import { AnomalyCard, CATEGORY_LABELS } from '@/components/anomalies/anomaly-card';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select, Textarea } from '@/components/ui/input';
-import { StatusBadge } from '@/components/ui/badge';
-import { ErrorState } from '@/components/ui/misc';
-import { anomalyStatusMeta, formatDate } from '@/lib/format';
+import { PageSpinner, ErrorState, EmptyState } from '@/components/ui/misc';
 import { ApiError } from '@/lib/api-client';
 import type { Anomaly, AnomalyStatus } from '@/types/models';
 import { RequireRole } from '@/components/shared/require-role';
-
-const CATEGORY_LABELS: Record<string, string> = {
-  depense_inconnue: 'Depense inconnue',
-  montant_incorrect: 'Montant incorrect',
-  doublon: 'Doublon',
-  justificatif_absent: 'Justificatif absent',
-  materiau_suspect: 'Materiau suspect',
-  autre: 'Autre',
-};
 
 function AnomaliesPageContent() {
   const [statusFilter, setStatusFilter] = React.useState<AnomalyStatus | ''>('');
@@ -37,28 +26,19 @@ function AnomaliesPageContent() {
     queryFn: () => anomaliesService.listAll(page, 20, statusFilter || undefined),
   });
 
-  const columns = React.useMemo<ColumnDef<Anomaly, any>[]>(
-    () => [
-      { header: 'Date', accessorKey: 'createdAt', cell: ({ row }) => formatDate(row.original.createdAt) },
-      { header: 'Projet', id: 'project', cell: ({ row }) => row.original.project?.name || '-' },
-      { header: 'Client', id: 'client', cell: ({ row }) => (row.original.client ? `${row.original.client.firstName} ${row.original.client.lastName}` : '-') },
-      { header: 'Type', id: 'category', cell: ({ row }) => CATEGORY_LABELS[row.original.category] ?? row.original.category },
-      { header: 'Description', accessorKey: 'description', cell: ({ row }) => <span className="line-clamp-1 max-w-xs">{row.original.description}</span> },
-      {
-        header: 'Statut',
-        accessorKey: 'status',
-        cell: ({ row }) => <StatusBadge label={anomalyStatusMeta[row.original.status].label} tone={anomalyStatusMeta[row.original.status].tone} />,
-      },
-    ],
-    [],
-  );
-
   return (
     <div>
       <PageHeader title="Anomalies signalees" description="Signalements des clients necessitant une investigation." />
 
       <div className="mb-4">
-        <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as AnomalyStatus | ''); setPage(1); }} className="w-56">
+        <Select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as AnomalyStatus | '');
+            setPage(1);
+          }}
+          className="w-full sm:w-56"
+        >
           <option value="">Tous les statuts</option>
           <option value="OPEN">Ouverts</option>
           <option value="INVESTIGATING">En investigation</option>
@@ -69,17 +49,39 @@ function AnomaliesPageContent() {
 
       {isError ? (
         <ErrorState message="Impossible de charger les anomalies." />
+      ) : isLoading ? (
+        <PageSpinner />
+      ) : (data?.items.length ?? 0) === 0 ? (
+        <EmptyState title="Aucune anomalie" description="Aucun client n'a signale d'anomalie pour le moment." />
       ) : (
-        <DataTable
-          columns={columns}
-          data={data?.items ?? []}
-          isLoading={isLoading}
-          emptyTitle="Aucune anomalie"
-          emptyDescription="Aucun client n'a signale d'anomalie pour le moment."
-          onRowClick={setSelected}
-          meta={data?.meta}
-          onPageChange={setPage}
-        />
+        <>
+          <div className="space-y-3">
+            {(data?.items ?? []).map((a) => (
+              <AnomalyCard key={a.id} anomaly={a} onClick={() => setSelected(a)} />
+            ))}
+          </div>
+
+          {data?.meta && data.meta.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-ink-400">
+                {data.meta.total} resultat{data.meta.total > 1 ? 's' : ''} - page {data.meta.page} sur {data.meta.totalPages}
+              </p>
+              <div className="flex gap-1.5">
+                <Button variant="outline" size="sm" disabled={data.meta.page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={data.meta.page >= data.meta.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {selected && <AnomalyResolveDialog anomaly={selected} onClose={() => setSelected(null)} />}
@@ -103,7 +105,12 @@ function AnomalyResolveDialog({ anomaly, onClose }: { anomaly: Anomaly; onClose:
   });
 
   return (
-    <Dialog open onClose={onClose} title="Traiter le signalement" description={`${CATEGORY_LABELS[anomaly.category] ?? anomaly.category} - ${anomaly.project?.name ?? ''}`}>
+    <Dialog
+      open
+      onClose={onClose}
+      title="Traiter le signalement"
+      description={`${CATEGORY_LABELS[anomaly.category] ?? anomaly.category} - ${anomaly.project?.name ?? ''}`}
+    >
       <div className="space-y-4">
         <p className="rounded-md bg-paper px-3 py-2.5 text-sm text-ink-700">{anomaly.description}</p>
 

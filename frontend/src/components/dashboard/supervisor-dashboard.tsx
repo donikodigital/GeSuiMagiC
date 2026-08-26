@@ -1,16 +1,20 @@
 // ============================================================================
-// supervisor-dashboard.tsx - v2.3
-// Le solde disponible refletait avant une somme de tous les chantiers
-// affectes ; il reflete desormais UN chantier selectionne (selecteur
-// affiche des 2 chantiers). Chantiers affectes/actifs restent des
-// compteurs globaux, ca reste pertinent tel quel.
+// supervisor-dashboard.tsx - v2.4
+// Refonte visuelle des cartes "Detail par chantier" alignee sur le meme
+// langage que client-dashboard.tsx v2.3 : icone HardHat + nom/localisation
+// en en-tete, bandeau de couleur selon le statut, bloc "Solde disponible"
+// sur fond distinct. Les deux actions (Enregistrer une depense / acces
+// rapide au projet) restent en pied de carte, inchangees dans leur
+// fonctionnement.
+// Aucun changement de logique/donnees : meme calcul de balance/activeCount,
+// meme selecteur de projet dans le hero.
 // ============================================================================
 
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowRight, ReceiptText } from 'lucide-react';
+import { ArrowRight, HardHat, ReceiptText } from 'lucide-react';
 import { useProjects } from '@/hooks/use-projects';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +22,14 @@ import { PageSpinner, EmptyState, ErrorState } from '@/components/ui/misc';
 import { StatusBadge } from '@/components/ui/badge';
 import { formatMoney, projectStatusMeta } from '@/lib/format';
 import { DashboardHero } from './dashboard-hero';
+
+const STATUS_BAR_GRADIENT: Record<string, string> = {
+  moss: 'from-moss-500 to-moss-300',
+  safety: 'from-safety-500 to-safety-300',
+  clay: 'from-clay-500 to-clay-300',
+  ink: 'from-ink-400 to-ink-200',
+  blueprint: 'from-blueprint-500 to-blueprint-300',
+};
 
 export function SupervisorDashboard() {
   const { data, isLoading, isError } = useProjects({ limit: 100 });
@@ -66,33 +78,49 @@ export function SupervisorDashboard() {
       <div>
         <h2 className="mb-4 font-display text-lg font-semibold text-ink-900">Detail par chantier</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
-            <Card key={project.id} className="flex h-full flex-col justify-between rounded-2xl transition-all hover:shadow-md">
-              <CardContent className="space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-display text-base font-semibold text-ink-900">{project.name}</p>
-                  <StatusBadge label={projectStatusMeta[project.status].label} tone={projectStatusMeta[project.status].tone} />
+          {projects.map((project) => {
+            const statusTone = projectStatusMeta[project.status].tone;
+            return (
+              <Card key={project.id} className="flex h-full flex-col overflow-hidden rounded-2xl transition-all hover:shadow-md">
+                <div className={`h-1 w-full bg-gradient-to-r ${STATUS_BAR_GRADIENT[statusTone] ?? STATUS_BAR_GRADIENT.blueprint}`} />
+
+                <CardContent className="flex-1 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600">
+                        <HardHat className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-display text-base font-semibold text-ink-900">{project.name}</p>
+                        <p className="truncate text-xs text-ink-400">
+                          {[project.location, project.city].filter(Boolean).join(', ') || 'Localisation non renseignee'}
+                        </p>
+                      </div>
+                    </div>
+                    <StatusBadge label={projectStatusMeta[project.status].label} tone={statusTone} className="shrink-0" />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-paper px-3.5 py-2.5">
+                    <span className="text-xs text-ink-400">Solde disponible</span>
+                    <span className="font-ledger text-base font-bold text-ink-900">{formatMoney(project.wallet?.balance ?? 0, project.currency)}</span>
+                  </div>
+                </CardContent>
+
+                <div className="flex gap-2 border-t border-concrete px-5 py-3">
+                  <Link href={`/projects/${project.id}/expenses/new`} className="flex-1">
+                    <Button size="sm" className="w-full">
+                      <ReceiptText className="h-4 w-4" /> Enregistrer une depense
+                    </Button>
+                  </Link>
+                  <Link href={`/projects/${project.id}`}>
+                    <Button size="sm" variant="outline">
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
                 </div>
-                <p className="text-xs text-ink-400">{[project.location, project.city].filter(Boolean).join(', ') || 'Localisation non renseignee'}</p>
-                <div className="flex items-center justify-between border-t border-concrete pt-3">
-                  <span className="text-xs text-ink-400">Solde disponible</span>
-                  <span className="font-ledger text-sm font-semibold text-ink-900">{formatMoney(project.wallet?.balance ?? 0, project.currency)}</span>
-                </div>
-              </CardContent>
-              <div className="flex gap-2 border-t border-concrete px-5 py-3">
-                <Link href={`/projects/${project.id}/expenses/new`} className="flex-1">
-                  <Button size="sm" className="w-full">
-                    <ReceiptText className="h-4 w-4" /> Enregistrer une depense
-                  </Button>
-                </Link>
-                <Link href={`/projects/${project.id}`}>
-                  <Button size="sm" variant="outline">
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>

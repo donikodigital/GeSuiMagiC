@@ -1,3 +1,4 @@
+//frontend/src/services/budgets.service.ts
 import { api } from '@/lib/api-client';
 import type { Budget, BudgetComparison } from '@/types/models';
 

@@ -1,20 +1,17 @@
+//frontend/src/app/(app)/clients/page.tsx
 'use client';
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { type ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { clientsService } from '@/services/clients.service';
 import { PageHeader } from '@/components/shared/page-header';
-import { DataTable } from '@/components/shared/data-table';
+import { ClientCard } from '@/components/clients/client-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { StatusBadge } from '@/components/ui/badge';
-import { ErrorState } from '@/components/ui/misc';
-import { userStatusMeta, formatRelative } from '@/lib/format';
+import { PageSpinner, ErrorState, EmptyState } from '@/components/ui/misc';
 import { CreateClientDialog } from '@/components/clients/create-client-dialog';
-import type { ClientProfile } from '@/types/models';
 import { RequireRole } from '@/components/shared/require-role';
 
 function ClientsPageContent() {
@@ -27,46 +24,6 @@ function ClientsPageContent() {
     queryKey: ['clients', page, search],
     queryFn: () => clientsService.list(page, 20, search || undefined),
   });
-
-  const columns = React.useMemo<ColumnDef<ClientProfile, any>[]>(
-    () => [
-      {
-        header: 'Client',
-        id: 'name',
-        cell: ({ row }) => (
-          <div>
-            <p className="font-medium text-ink-900">
-              {row.original.firstName} {row.original.lastName}
-            </p>
-            <p className="text-xs text-ink-400">{row.original.user?.email}</p>
-          </div>
-        ),
-      },
-      { header: 'Ville', accessorKey: 'city', cell: ({ row }) => row.original.city || '-' },
-      { header: 'Projets', id: 'projects', cell: ({ row }) => row.original._count?.projects ?? 0 },
-      {
-        header: 'Statut du compte',
-        id: 'status',
-        cell: ({ row }) =>
-          row.original.user ? (
-            <StatusBadge label={userStatusMeta[row.original.user.status].label} tone={userStatusMeta[row.original.user.status].tone} />
-          ) : (
-            '-'
-          ),
-      },
-      {
-        header: 'Derniere connexion',
-        id: 'lastLogin',
-        cell: ({ row }) => (row.original.user?.lastLoginAt ? formatRelative(row.original.user.lastLoginAt) : 'Jamais'),
-      },
-      {
-        header: '',
-        id: 'active',
-        cell: ({ row }) => (!row.original.isActive ? <StatusBadge label="Suspendu par l'admin" tone="clay" /> : null),
-      },
-    ],
-    [],
-  );
 
   return (
     <div>
@@ -83,23 +40,53 @@ function ClientsPageContent() {
       <div className="mb-4 max-w-sm">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-300" />
-          <Input placeholder="Rechercher un client..." className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+          <Input
+            placeholder="Rechercher un client..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
         </div>
       </div>
 
       {isError ? (
         <ErrorState message="Impossible de charger les clients." />
+      ) : isLoading ? (
+        <PageSpinner />
+      ) : (data?.items.length ?? 0) === 0 ? (
+        <EmptyState title="Aucun client" description="Creez le premier client pour commencer." />
       ) : (
-        <DataTable
-          columns={columns}
-          data={data?.items ?? []}
-          isLoading={isLoading}
-          emptyTitle="Aucun client"
-          emptyDescription="Creez le premier client pour commencer."
-          onRowClick={(row) => router.push(`/clients/${row.id}`)}
-          meta={data?.meta}
-          onPageChange={setPage}
-        />
+        <>
+          <div className="space-y-3">
+            {(data?.items ?? []).map((client) => (
+              <ClientCard key={client.id} client={client} />
+            ))}
+          </div>
+
+          {data?.meta && data.meta.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-ink-400">
+                {data.meta.total} resultat{data.meta.total > 1 ? 's' : ''} - page {data.meta.page} sur {data.meta.totalPages}
+              </p>
+              <div className="flex gap-1.5">
+                <Button variant="outline" size="sm" disabled={data.meta.page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={data.meta.page >= data.meta.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <CreateClientDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onCreated={(id) => router.push(`/clients/${id}`)} />

@@ -1,3 +1,4 @@
+//backend/src/clients/dto/update-own-profile.dto.ts
 import { IsOptional, IsString } from 'class-validator';
 
 /** Le client ne peut modifier que certaines informations personnelles (section 5). */
