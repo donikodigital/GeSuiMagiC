@@ -1,14 +1,17 @@
 // ============================================================================
-// app/(app)/projects/[id]/layout.tsx - v1.1
-// Le bloc titre/badge/localisation/solde passe dans une mini-hero navy/or,
-// coherente avec les DashboardHero des tableaux de bord. Toute la logique
-// (telechargement PDF/Excel, onglets, garde de chargement) est inchangee -
-// seul le balisage du bloc d'entete change.
-//
-// NOTE : Button variant="outline" et StatusBadge n'ont pas ete concus avec
-// un fond sombre en tete (je n'ai pas leur source). J'ai surcharge leurs
-// couleurs via className en supposant qu'elles fusionnent proprement -
-// verifie le rendu, en particulier le badge de statut sur le fond navy.
+// app/(app)/projects/[id]/layout.tsx - v1.2
+// Ajout des onglets Documents / Superviseurs / Anomalies / Reglages a la
+// barre d'onglets desktop - ils n'existaient jusqu'ici que dans le tiroir
+// mobile (section "Chantier en cours" de topbar.tsx v1.2), rendant ces
+// pages inaccessibles depuis un ecran large. Meme gating par role que
+// topbar.tsx, pour rester coherent entre les deux surfaces :
+// - Documents : tous roles
+// - Superviseurs : Client ou Superadmin
+// - Anomalies : Client uniquement
+// - Reglages (du projet) : Client ou Superadmin
+// Barre d'onglets deja en overflow-x-auto (gere le cas ou 8 onglets
+// depassent la largeur sur les ecrans plus etroits). Aucun changement sur
+// l'en-tete navy, les telechargements PDF/Excel, ou le garde de chargement.
 // ============================================================================
 
 'use client';
@@ -17,6 +20,7 @@ import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { ArrowLeft, Download, FileSpreadsheet } from 'lucide-react';
 import { useProject } from '@/hooks/use-projects';
+import { useAuth } from '@/hooks/use-auth';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
@@ -29,6 +33,7 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
   const { data: project, isLoading, isError } = useProject(params.id);
+  const { isClient, isSuperadmin } = useAuth();
 
   if (isLoading) return <PageSpinner />;
   if (isError || !project) return <ErrorState message="Impossible de charger ce projet." />;
@@ -39,6 +44,10 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
     { label: 'Depots', href: `${base}/deposits` },
     { label: 'Depenses', href: `${base}/expenses` },
     { label: 'Budgets', href: `${base}/budgets` },
+    { label: 'Documents', href: `${base}/documents` },
+    ...(isClient || isSuperadmin ? [{ label: 'Superviseurs', href: `${base}/supervisors` }] : []),
+    ...(isClient ? [{ label: 'Anomalies', href: `${base}/anomalies` }] : []),
+    ...(isClient || isSuperadmin ? [{ label: 'Reglages', href: `${base}/settings` }] : []),
   ];
 
   const balance = parseFloat(project.wallet?.balance ?? '0');

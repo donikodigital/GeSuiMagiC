@@ -1,21 +1,6 @@
-// ============================================================================
-// app/(app)/settings/page.tsx - v2.0
-// Refonte visuelle complete, aucun changement de logique/donnees (memes
-// mutations, memes requetes, meme validation zod).
-//
-// - Chaque carte recoit une icone dediee (KeyRound / UserCircle2 /
-//   SlidersHorizontal) dans un rond blueprint, meme convention que la page
-//   "Nouveau projet".
-// - ClientProfileCard : grille grid-cols-2 fixe remplacee par
-//   grid-cols-1 sm:grid-cols-2, elle ecrasait les champs sur mobile etroit.
-// - GlobalSettingsCard : le formulaire d'ajout (Cle / Valeur / bouton)
-//   etait en flex-wrap avec des champs qui s'ecrasaient sur mobile (visible
-//   sur la capture : "Ex: de", "Ex: "G" tronques, bouton coupe). Passe en
-//   grille verticale sur mobile, horizontale a partir de sm:. La liste des
-//   reglages existants devient des lignes plus lisibles (cle a gauche,
-//   valeur en font-ledger a droite, separateur), avec un etat vide propre
-//   au lieu de ne rien afficher quand la liste est vide.
-// ============================================================================
+// frontend/src/app/(app)/settings/page.tsx - v2.1
+// Ajout de SupervisorProfileCard (memes conventions que ClientProfileCard),
+// affichee pour isSupervisor. Reste du fichier inchange depuis v2.0.
 
 'use client';
 
@@ -28,6 +13,7 @@ import { toast } from 'sonner';
 import { KeyRound, Plus, Settings2, SlidersHorizontal, UserCircle2 } from 'lucide-react';
 import { authService } from '@/services/auth.service';
 import { clientsService } from '@/services/clients.service';
+import { supervisorsService } from '@/services/supervisors.service';
 import { useAuth } from '@/hooks/use-auth';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -48,13 +34,13 @@ type PasswordFormValues = z.infer<typeof passwordSchema>;
 function SectionIcon({ icon: Icon }: { icon: React.ComponentType<{ className?: string }> }) {
   return (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600">
-      <Icon className="h-4.5 w-4.5" />
+      <Icon className="h-4 w-4" />
     </span>
   );
 }
 
 export default function SettingsPage() {
-  const { isSuperadmin, isClient } = useAuth();
+  const { isSuperadmin, isClient, isSupervisor } = useAuth();
   const {
     register,
     handleSubmit,
@@ -76,6 +62,7 @@ export default function SettingsPage() {
       <PageHeader title="Reglages" />
 
       {isClient && <ClientProfileCard />}
+      {isSupervisor && <SupervisorProfileCard />}
 
       <Card>
         <CardHeader className="items-start gap-3">
@@ -175,6 +162,68 @@ function ClientProfileCard() {
               <Input id="city" {...register('city')} />
             </FormField>
           </div>
+          <div className="flex justify-end pt-1">
+            <Button type="submit" loading={mutation.isPending}>
+              Enregistrer
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+const supervisorProfileSchema = z.object({
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  profession: z.string().optional(),
+});
+type SupervisorProfileFormValues = z.infer<typeof supervisorProfileSchema>;
+
+function SupervisorProfileCard() {
+  const queryClient = useQueryClient();
+  const { data: supervisor, isLoading } = useQuery({ queryKey: ['supervisors', 'me'], queryFn: () => supervisorsService.me() });
+  const { register, handleSubmit, reset } = useForm<SupervisorProfileFormValues>();
+
+  React.useEffect(() => {
+    if (supervisor) reset({ phone: supervisor.phone ?? '', address: supervisor.address ?? '', profession: supervisor.profession ?? '' });
+  }, [supervisor, reset]);
+
+  const mutation = useMutation({
+    mutationFn: (values: SupervisorProfileFormValues) => supervisorsService.updateMe(values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supervisors', 'me'] });
+      toast.success('Profil mis a jour.');
+    },
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Mise a jour impossible.'),
+  });
+
+  if (isLoading) return null;
+
+  return (
+    <Card>
+      <CardHeader className="items-start gap-3">
+        <SectionIcon icon={UserCircle2} />
+        <div>
+          <CardTitle>Mon profil</CardTitle>
+          <CardDescription>
+            {supervisor?.firstName} {supervisor?.lastName} — {supervisor?.user?.email}. Seules certaines informations personnelles sont modifiables.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField label="Telephone" htmlFor="sup-phone">
+              <Input id="sup-phone" {...register('phone')} />
+            </FormField>
+            <FormField label="Profession" htmlFor="sup-profession">
+              <Input id="sup-profession" {...register('profession')} />
+            </FormField>
+          </div>
+          <FormField label="Adresse" htmlFor="sup-address">
+            <Input id="sup-address" {...register('address')} />
+          </FormField>
           <div className="flex justify-end pt-1">
             <Button type="submit" loading={mutation.isPending}>
               Enregistrer

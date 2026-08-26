@@ -1,3 +1,4 @@
+//backend/src/common/exceptions/app.exception.ts
 import { HttpException, HttpStatus } from '@nestjs/common';
 
 /**

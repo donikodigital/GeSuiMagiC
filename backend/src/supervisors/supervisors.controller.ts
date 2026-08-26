@@ -1,4 +1,10 @@
-//backend/src/supervisors/supervisors.controller.ts
+// backend/src/supervisors/supervisors.controller.ts - v1.1
+// Ajout de GET /supervisors/me et PATCH /supervisors/me, reserves au role
+// SUPERVISOR, pour qu'il puisse enfin consulter/modifier son propre profil
+// (jusqu'ici PATCH /supervisors/:id etait reserve a CLIENT/SUPERADMIN).
+// Places avant @Get(':id') / @Patch(':id') pour que NestJS ne traite pas
+// "me" comme une valeur de :id.
+
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsIn } from 'class-validator';
@@ -7,6 +13,7 @@ import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-use
 import { SupervisorsService } from './supervisors.service';
 import { CreateSupervisorDto } from './dto/create-supervisor.dto';
 import { UpdateSupervisorDto } from './dto/update-supervisor.dto';
+import { UpdateOwnSupervisorProfileDto } from './dto/update-own-profile.dto';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { AppException } from '../common/exceptions/app.exception';
 
@@ -31,6 +38,21 @@ export class SupervisorsController {
   async findAll(@Query() query: PaginationQueryDto, @CurrentUser() actor: AuthenticatedUser) {
     const clientId = actor.role === 'CLIENT' ? actor.clientProfileId : undefined;
     return this.supervisorsService.findAll(clientId, { page: query.page ?? 1, limit: query.limit ?? 20, search: query.search });
+  }
+
+  /** Le superviseur consulte son propre profil. */
+  @Get('me')
+  @Roles(UserRole.SUPERVISOR)
+  async me(@CurrentUser() actor: AuthenticatedUser) {
+    if (!actor.supervisorProfileId) throw AppException.notFound('Superviseur');
+    return this.supervisorsService.findOne(actor.supervisorProfileId, actor);
+  }
+
+  @Patch('me')
+  @Roles(UserRole.SUPERVISOR)
+  async updateMe(@Body() dto: UpdateOwnSupervisorProfileDto, @CurrentUser() actor: AuthenticatedUser) {
+    if (!actor.supervisorProfileId) throw AppException.notFound('Superviseur');
+    return this.supervisorsService.updateOwnProfile(actor.supervisorProfileId, dto, actor);
   }
 
   @Get(':id')

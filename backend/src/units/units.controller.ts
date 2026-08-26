@@ -1,3 +1,6 @@
+// backend/src/units/units.controller.ts - v1.1
+// Ajout de CLIENT sur create(), meme raisonnement.
+
 import { Body, Controller, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -35,7 +38,7 @@ export class UnitsController {
   constructor(private readonly unitsService: UnitsService) {}
 
   @Post()
-  @Roles(UserRole.SUPERADMIN)
+  @Roles(UserRole.SUPERADMIN, UserRole.CLIENT)
   async create(@Body() dto: UpsertUnitDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.unitsService.create(dto, actor);
   }

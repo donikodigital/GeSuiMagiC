@@ -1,4 +1,10 @@
-//backend/src/supervisors/supervisors.service.ts
+// backend/src/supervisors/supervisors.service.ts - v1.1
+// Ajout de updateOwnProfile() pour que le superviseur puisse modifier ses
+// propres informations personnelles (telephone, adresse, profession), meme
+// principe que ClientsService.updateOwnProfile. findOne() reste inchange -
+// deja utilisable tel quel pour GET /supervisors/me puisque le garde
+// d'isolation ne s'applique qu'au role CLIENT.
+
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -8,6 +14,7 @@ import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
 import { CreateSupervisorDto } from './dto/create-supervisor.dto';
 import { UpdateSupervisorDto } from './dto/update-supervisor.dto';
+import { UpdateOwnSupervisorProfileDto } from './dto/update-own-profile.dto';
 
 @Injectable()
 export class SupervisorsService {
@@ -122,6 +129,24 @@ export class SupervisorsService {
       entityId: id,
       oldValue: existing,
       newValue: updated,
+    });
+
+    return updated;
+  }
+
+  /** Section equivalente au client : le superviseur ne peut modifier que certaines informations personnelles. */
+  async updateOwnProfile(supervisorProfileId: string, dto: UpdateOwnSupervisorProfileDto, actor: AuthenticatedUser) {
+    const existing = await this.prisma.supervisorProfile.findUniqueOrThrow({ where: { id: supervisorProfileId } });
+    const updated = await this.prisma.supervisorProfile.update({ where: { id: supervisorProfileId }, data: dto });
+
+    await this.audit.log({
+      userId: actor.userId,
+      userRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'Supervisor',
+      entityId: supervisorProfileId,
+      oldValue: { phone: existing.phone, address: existing.address, profession: existing.profession },
+      newValue: dto,
     });
 
     return updated;

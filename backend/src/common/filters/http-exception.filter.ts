@@ -1,3 +1,4 @@
+//backend/src/common/filters/http-exception.filter.ts
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AppException } from '../exceptions/app.exception';

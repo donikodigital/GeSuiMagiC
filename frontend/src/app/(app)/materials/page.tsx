@@ -1,22 +1,14 @@
-// ============================================================================
-// app/(app)/materials/page.tsx - v2.0
-// Refonte visuelle complete des 3 panneaux, aucun changement de
-// logique/mutations (memes appels catalogService, memes hooks use-catalog).
-//
-// - CategoriesPanel / MaterialsPanel : <table> (source du scroll
-//   horizontal - colonne "actions" poussee hors ecran sur la capture)
-//   remplacee par une liste de cartes cliquables-au-toggle, meme langage
-//   que ClientCard/SupervisorCard (icone ronde, StatusBadge, bouton
-//   d'action colore selon l'etat).
-// - Formulaires d'ajout : passes du flex-wrap (qui ecrasait les champs sur
-//   mobile) a la grille verticale/horizontale deja utilisee dans
-//   settings.tsx ("Ajouter un reglage"), avec bloc pointille pour bien
-//   distinguer "creer" de "consulter".
-// - UnitsPanel : grille de puces conservee (deja adaptee mobile) mais
-//   restylee avec icone Ruler et couleurs de statut coherentes avec le
-//   reste (moss actif / ink desactive) au lieu de gris plat.
-// - Onglets : ajout d'icones (Tag / Package / Ruler) pour un reperage plus
-//   rapide, structure inchangee.
+// frontend/src/app/(app)/materials/page.tsx - v2.1
+// - RequireRole elargi a CLIENT (en plus de SUPERADMIN).
+// - Chaque panneau appelle desormais useAuth() pour savoir si l'acteur est
+//   superadmin : le bouton toggle (activer/desactiver) n'est rendu que pour
+//   lui, puisque les endpoints deactivate/reactivate restent SUPERADMIN
+//   uniquement cote backend (bouton visible mais menant a un 403 sinon).
+//   Le badge de statut reste visible pour tous.
+// - UnitsPanel : la "puce" cliquable devient un simple div non interactif
+//   pour un non-superadmin (plus de toggle au clic), badge de statut
+//   conserve.
+// Aucun autre changement (memes formulaires d'ajout, memes mutations create).
 // ============================================================================
 
 'use client';
@@ -27,6 +19,7 @@ import { toast } from 'sonner';
 import { Ban, CheckCircle2, Package, Plus, Ruler, Tag } from 'lucide-react';
 import { catalogService } from '@/services/catalog.service';
 import { useCategories, useMaterials, useUnits } from '@/hooks/use-catalog';
+import { useAuth } from '@/hooks/use-auth';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -96,6 +89,7 @@ function ToggleButton({ active, onClick, loading }: { active: boolean; onClick: 
 
 function CategoriesPanel() {
   const queryClient = useQueryClient();
+  const { isSuperadmin } = useAuth();
   const { data: categories, isLoading } = useCategories(true);
   const [name, setName] = React.useState('');
   const [group, setGroup] = React.useState('');
@@ -150,7 +144,9 @@ function CategoriesPanel() {
                     <p className="truncate text-xs text-ink-400">{c.group || 'Sans groupe'}</p>
                   </div>
                   <StatusBadge label={c.isActive ? 'Actif' : 'Desactive'} tone={c.isActive ? 'moss' : 'ink'} className="shrink-0" />
-                  <ToggleButton active={c.isActive} loading={toggleMutation.isPending} onClick={() => toggleMutation.mutate({ id: c.id, active: c.isActive })} />
+                  {isSuperadmin && (
+                    <ToggleButton active={c.isActive} loading={toggleMutation.isPending} onClick={() => toggleMutation.mutate({ id: c.id, active: c.isActive })} />
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -164,6 +160,7 @@ function CategoriesPanel() {
 
 function MaterialsPanel() {
   const queryClient = useQueryClient();
+  const { isSuperadmin } = useAuth();
   const { data: categories } = useCategories();
   const { data: units } = useUnits();
   const [categoryId, setCategoryId] = React.useState('');
@@ -253,7 +250,9 @@ function MaterialsPanel() {
                     </p>
                   </div>
                   <StatusBadge label={m.isActive ? 'Actif' : 'Desactive'} tone={m.isActive ? 'moss' : 'ink'} className="shrink-0" />
-                  <ToggleButton active={m.isActive} loading={toggleMutation.isPending} onClick={() => toggleMutation.mutate({ id: m.id, active: m.isActive })} />
+                  {isSuperadmin && (
+                    <ToggleButton active={m.isActive} loading={toggleMutation.isPending} onClick={() => toggleMutation.mutate({ id: m.id, active: m.isActive })} />
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -267,6 +266,7 @@ function MaterialsPanel() {
 
 function UnitsPanel() {
   const queryClient = useQueryClient();
+  const { isSuperadmin } = useAuth();
   const { data: units, isLoading } = useUnits(true);
   const [name, setName] = React.useState('');
   const [symbol, setSymbol] = React.useState('');
@@ -309,25 +309,43 @@ function UnitsPanel() {
       {!isLoading &&
         (units && units.length > 0 ? (
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {units.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => toggleMutation.mutate({ id: u.id, active: u.isActive })}
-                className={cn(
-                  'flex items-center gap-3 rounded-card border p-3.5 text-left transition-colors',
-                  u.isActive ? 'border-concrete bg-white hover:border-blueprint-200' : 'border-concrete-light bg-concrete-light/60',
-                )}
-              >
-                <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', u.isActive ? 'bg-blueprint-50 text-blueprint-600' : 'bg-concrete-light text-ink-400')}>
-                  <Ruler className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className={cn('truncate font-medium', u.isActive ? 'text-ink-900' : 'text-ink-400')}>{u.name}</p>
-                  {u.symbol && <p className="truncate text-xs text-ink-400">{u.symbol}</p>}
+            {units.map((u) => {
+              const content = (
+                <>
+                  <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', u.isActive ? 'bg-blueprint-50 text-blueprint-600' : 'bg-concrete-light text-ink-400')}>
+                    <Ruler className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn('truncate font-medium', u.isActive ? 'text-ink-900' : 'text-ink-400')}>{u.name}</p>
+                    {u.symbol && <p className="truncate text-xs text-ink-400">{u.symbol}</p>}
+                  </div>
+                  <StatusBadge label={u.isActive ? 'Actif' : 'Desactive'} tone={u.isActive ? 'moss' : 'ink'} className="shrink-0" />
+                </>
+              );
+
+              return isSuperadmin ? (
+                <button
+                  key={u.id}
+                  onClick={() => toggleMutation.mutate({ id: u.id, active: u.isActive })}
+                  className={cn(
+                    'flex items-center gap-3 rounded-card border p-3.5 text-left transition-colors',
+                    u.isActive ? 'border-concrete bg-white hover:border-blueprint-200' : 'border-concrete-light bg-concrete-light/60',
+                  )}
+                >
+                  {content}
+                </button>
+              ) : (
+                <div
+                  key={u.id}
+                  className={cn(
+                    'flex items-center gap-3 rounded-card border p-3.5',
+                    u.isActive ? 'border-concrete bg-white' : 'border-concrete-light bg-concrete-light/60',
+                  )}
+                >
+                  {content}
                 </div>
-                <StatusBadge label={u.isActive ? 'Actif' : 'Desactive'} tone={u.isActive ? 'moss' : 'ink'} className="shrink-0" />
-              </button>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <EmptyState title="Aucune unite" description="Ajoutez votre premiere unite ci-dessus." />
@@ -338,7 +356,7 @@ function UnitsPanel() {
 
 export default function MaterialsPage() {
   return (
-    <RequireRole roles={['SUPERADMIN']}>
+    <RequireRole roles={['SUPERADMIN', 'CLIENT']}>
       <MaterialsPageContent />
     </RequireRole>
   );

@@ -1,4 +1,6 @@
-//frontend/src/services/supervisors.service.ts
+// frontend/src/services/supervisors.service.ts - v1.1
+// Ajout de me() et updateMe(), memes conventions que clientsService.
+
 import { api } from '@/lib/api-client';
 import type { PaginatedResponse, SupervisorProfile } from '@/types/models';
 
@@ -17,6 +19,11 @@ export const supervisorsService = {
     api.get<PaginatedResponse<SupervisorProfile>>(`/supervisors?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
 
   get: (id: string) => api.get<SupervisorProfile>(`/supervisors/${id}`),
+
+  me: () => api.get<SupervisorProfile>('/supervisors/me'),
+
+  updateMe: (payload: { phone?: string; address?: string; profession?: string }) =>
+    api.patch<SupervisorProfile>('/supervisors/me', payload),
 
   create: (payload: CreateSupervisorPayload) => api.post<SupervisorProfile>('/supervisors', payload),
 
