@@ -1,3 +1,4 @@
+//frontend/src/services/notifications.service.ts
 import { api } from '@/lib/api-client';
 import type { NotificationItem, PaginatedResponse } from '@/types/models';
 

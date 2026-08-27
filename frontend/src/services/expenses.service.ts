@@ -1,3 +1,6 @@
+// frontend/src/services/expenses.service.ts - v1.1
+// Ajout de update/remove/archive/unarchive, meme principe que deposits.service.ts.
+
 import { api } from '@/lib/api-client';
 import type { Expense, ExpensePaymentStatus, ExpenseStatus, PaginatedResponse } from '@/types/models';
 
@@ -16,6 +19,19 @@ export interface CreateExpensePayload {
   amountPaidToSupplier?: number;
 }
 
+export interface UpdateExpensePayload {
+  date?: string;
+  categoryId?: string;
+  materialId?: string;
+  label?: string;
+  quantity?: number;
+  unit?: string;
+  unitPrice?: number;
+  observation?: string;
+  supplier?: string;
+  invoiceReference?: string;
+}
+
 export interface ExpenseFilters {
   page?: number;
   limit?: number;
@@ -29,6 +45,7 @@ export interface ExpenseFilters {
   to?: string;
   minAmount?: number;
   maxAmount?: number;
+  includeArchived?: boolean;
 }
 
 function buildQuery(filters: object) {
@@ -57,4 +74,12 @@ export const expensesService = {
 
   updatePaymentStatus: (id: string, paymentStatus: ExpensePaymentStatus, amountPaidToSupplier?: number) =>
     api.patch<Expense>(`/expenses/${id}/payment-status`, { paymentStatus, amountPaidToSupplier }),
+
+  update: (id: string, payload: UpdateExpensePayload) => api.patch<Expense>(`/expenses/${id}`, payload),
+
+  remove: (id: string, reason: string) => api.delete<Expense>(`/expenses/${id}`, { data: { reason } }),
+
+  archive: (id: string) => api.patch<Expense>(`/expenses/${id}/archive`),
+
+  unarchive: (id: string) => api.patch<Expense>(`/expenses/${id}/unarchive`),
 };

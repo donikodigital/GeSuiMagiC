@@ -1,4 +1,9 @@
-//backend/src/deposits/deposits.service.ts
+// backend/src/deposits/deposits.service.ts - v1.1
+// Ajout de update() (edition libre multi-champs), archive()/unarchive() et
+// remove() (suppression logique -> statut CANCELLED, jamais de suppression
+// physique - coherent avec Expense.cancel() et la section 52 du cahier des
+// charges). Toutes reservees au superadmin (verifie au controller).
+
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +17,7 @@ import { buildPaginationMeta } from '../common/dto/pagination.dto';
 import { formatMoney } from '../common/utils/money.util';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { DepositQueryDto } from './dto/deposit-query.dto';
+import { UpdateDepositDto } from './dto/update-deposit.dto';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -24,11 +30,9 @@ export class DepositsService {
     private readonly config: ConfigService,
   ) {}
 
-  /** Etape 1 (section 14) : le client cree le depot, statut EN ATTENTE. */
   async create(projectId: string, dto: CreateDepositDto, actor: AuthenticatedUser) {
     const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
 
-    // Le superviseur beneficiaire doit etre affecte a ce projet (regle 3/section 11).
     const assignment = await this.prisma.projectSupervisor.findFirst({
       where: { projectId, supervisorId: dto.supervisorId, status: 'ACTIVE' },
     });
@@ -62,7 +66,6 @@ export class DepositsService {
       newValue: { amount: dto.amount, projectId, supervisorId: dto.supervisorId, status: 'PENDING' },
     });
 
-    // Etape 2 : le superviseur recoit une notification (section 14).
     const supervisor = await this.prisma.supervisorProfile.findUniqueOrThrow({ where: { id: dto.supervisorId } });
     await this.notifications.send({
       userId: supervisor.userId,
@@ -81,7 +84,7 @@ export class DepositsService {
     return deposit;
   }
 
-  async findAllForProject(projectId: string, query: DepositQueryDto) {
+  async findAllForProject(projectId: string, query: DepositQueryDto & { includeArchived?: boolean }) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -89,6 +92,7 @@ export class DepositsService {
       projectId,
       status: query.status,
       supervisorId: query.supervisorId,
+      isArchived: query.includeArchived ? undefined : false,
       date: query.from || query.to ? { gte: query.from ? new Date(query.from) : undefined, lte: query.to ? new Date(query.to) : undefined } : undefined,
       ...(query.search ? { OR: [{ motif: { contains: query.search, mode: 'insensitive' } }, { reference: { contains: query.search, mode: 'insensitive' } }] } : {}),
     };
@@ -116,7 +120,6 @@ export class DepositsService {
     return deposit;
   }
 
-  /** Consultation avec verification de l'appartenance (section 77 : jamais seulement userId). */
   async findOne(id: string, actor: AuthenticatedUser) {
     const deposit = await this.getRaw(id);
     if (actor.role === 'SUPERADMIN') return deposit;
@@ -125,7 +128,6 @@ export class DepositsService {
     throw AppException.forbiddenProjectAccess();
   }
 
-  /** Etape 3-4 (section 14) : seul le superviseur beneficiaire peut valider. */
   async approve(id: string, actor: AuthenticatedUser) {
     const deposit = await this.prisma.deposit.findUniqueOrThrow({ where: { id } });
 
@@ -141,19 +143,10 @@ export class DepositsService {
         where: { id },
         data: { status: 'APPROVED', isLocked: true, approvedById: actor.userId, approvedAt: new Date() },
       });
-      // Seuls les depots VALIDES alimentent le solde (regle 6).
       await this.wallets.recompute(deposit.projectId, tx);
 
       await this.audit.log(
-        {
-          userId: actor.userId,
-          userRole: actor.role,
-          action: 'APPROVE',
-          entityType: 'Deposit',
-          entityId: id,
-          oldValue: { status: 'PENDING' },
-          newValue: { status: 'APPROVED' },
-        },
+        { userId: actor.userId, userRole: actor.role, action: 'APPROVE', entityType: 'Deposit', entityId: id, oldValue: { status: 'PENDING' }, newValue: { status: 'APPROVED' } },
         tx,
       );
     });
@@ -165,19 +158,13 @@ export class DepositsService {
       type: 'DEPOSIT_APPROVED',
       title: 'Depot valide',
       message: `Votre depot de ${formatMoney(deposit.amount, deposit.currency)} a ete valide.`,
-      emailHtml: emailTemplates.depositApproved(
-        client.firstName,
-        project.name,
-        formatMoney(deposit.amount, deposit.currency),
-        `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`,
-      ),
+      emailHtml: emailTemplates.depositApproved(client.firstName, project.name, formatMoney(deposit.amount, deposit.currency), `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`),
       emailSubject: 'Depot valide',
     });
 
     return this.getRaw(id);
   }
 
-  /** Etape 5 (section 14) : refus avec motif obligatoire. Le solde n'est pas augmente. */
   async reject(id: string, reason: string, actor: AuthenticatedUser) {
     const deposit = await this.prisma.deposit.findUniqueOrThrow({ where: { id } });
 
@@ -211,57 +198,24 @@ export class DepositsService {
       type: 'DEPOSIT_REJECTED',
       title: 'Depot refuse',
       message: `Votre depot de ${formatMoney(deposit.amount, deposit.currency)} a ete refuse : ${reason}`,
-      emailHtml: emailTemplates.depositRejected(
-        client.firstName,
-        project.name,
-        formatMoney(deposit.amount, deposit.currency),
-        reason,
-        `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`,
-      ),
+      emailHtml: emailTemplates.depositRejected(client.firstName, project.name, formatMoney(deposit.amount, deposit.currency), reason, `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`),
       emailSubject: 'Depot refuse',
     });
 
     return this.getRaw(id);
   }
 
-  /**
-   * Correction administrative (section 16/53). Reservee au superadmin.
-   * Ne remplace JAMAIS silencieusement le montant : trace complete conservee
-   * dans FinancialCorrection + AuditLog, avant recalcul du solde.
-   */
   async correctAmount(id: string, newAmount: number, reason: string, actor: AuthenticatedUser) {
     const deposit = await this.prisma.deposit.findUniqueOrThrow({ where: { id } });
     const oldAmount = deposit.amount;
 
     await this.prisma.runInTransaction(async (tx) => {
       await tx.deposit.update({ where: { id }, data: { amount: newAmount } });
-
-      await tx.financialCorrection.create({
-        data: {
-          entityType: 'Deposit',
-          entityId: id,
-          oldValue: oldAmount,
-          newValue: newAmount,
-          reason,
-          correctedById: actor.userId,
-        },
-      });
-
-      if (deposit.status === 'APPROVED') {
-        await this.wallets.recompute(deposit.projectId, tx);
-      }
+      await tx.financialCorrection.create({ data: { entityType: 'Deposit', entityId: id, oldValue: oldAmount, newValue: newAmount, reason, correctedById: actor.userId } });
+      if (deposit.status === 'APPROVED') await this.wallets.recompute(deposit.projectId, tx);
 
       await this.audit.log(
-        {
-          userId: actor.userId,
-          userRole: actor.role,
-          action: 'ADMIN_CORRECTION',
-          entityType: 'Deposit',
-          entityId: id,
-          oldValue: { amount: oldAmount },
-          newValue: { amount: newAmount },
-          reason,
-        },
+        { userId: actor.userId, userRole: actor.role, action: 'ADMIN_CORRECTION', entityType: 'Deposit', entityId: id, oldValue: { amount: oldAmount }, newValue: { amount: newAmount }, reason },
         tx,
       );
     });
@@ -272,15 +226,107 @@ export class DepositsService {
       type: 'ADMIN_CORRECTION',
       title: 'Correction administrative sur un depot',
       message: `Le montant d'un depot a ete corrige de ${formatMoney(oldAmount, deposit.currency)} a ${formatMoney(newAmount, deposit.currency)}.`,
-      emailHtml: emailTemplates.adminCorrection(
-        client.firstName,
-        'Deposit',
-        formatMoney(oldAmount, deposit.currency),
-        formatMoney(newAmount, deposit.currency),
-        reason,
-        `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`,
-      ),
+      emailHtml: emailTemplates.adminCorrection(client.firstName, 'Deposit', formatMoney(oldAmount, deposit.currency), formatMoney(newAmount, deposit.currency), reason, `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`),
       emailSubject: 'Correction administrative',
+    });
+
+    return this.getRaw(id);
+  }
+
+  /** Edition libre multi-champs (superadmin). Si le montant change, on passe aussi par le circuit de correction financiere. */
+  async update(id: string, dto: UpdateDepositDto, actor: AuthenticatedUser) {
+    const existing = await this.prisma.deposit.findUniqueOrThrow({ where: { id } });
+    const amountChanged = dto.amount !== undefined && Number(dto.amount) !== Number(existing.amount);
+
+    const changedFieldLabels: string[] = [];
+    if (amountChanged) changedFieldLabels.push('Montant');
+    if (dto.date !== undefined) changedFieldLabels.push('Date');
+    if (dto.motif !== undefined) changedFieldLabels.push('Motif');
+    if (dto.paymentMethod !== undefined) changedFieldLabels.push('Mode de versement');
+    if (dto.reference !== undefined) changedFieldLabels.push('Reference');
+    if (dto.observation !== undefined) changedFieldLabels.push('Observation');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.deposit.update({
+        where: { id },
+        data: {
+          amount: dto.amount,
+          date: dto.date ? new Date(dto.date) : undefined,
+          motif: dto.motif,
+          paymentMethod: dto.paymentMethod,
+          reference: dto.reference,
+          observation: dto.observation,
+        },
+      });
+
+      if (amountChanged) {
+        await tx.financialCorrection.create({
+          data: { entityType: 'Deposit', entityId: id, oldValue: existing.amount, newValue: dto.amount!, reason: 'Modification administrative (edition multi-champs)', correctedById: actor.userId },
+        });
+        if (existing.status === 'APPROVED') await this.wallets.recompute(existing.projectId, tx);
+      }
+
+      await this.audit.log(
+        { userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'Deposit', entityId: id, oldValue: existing, newValue: dto },
+        tx,
+      );
+    });
+
+    if (changedFieldLabels.length > 0) {
+      const client = await this.prisma.clientProfile.findUniqueOrThrow({ where: { id: existing.clientId } });
+      await this.notifications.send({
+        userId: client.userId,
+        type: 'ADMIN_CORRECTION',
+        title: 'Modification administrative sur un depot',
+        message: `Champs modifies : ${changedFieldLabels.join(', ')}.`,
+        emailHtml: emailTemplates.adminFieldUpdate(client.firstName, 'Deposit', changedFieldLabels.join(', '), `${this.config.get<string>('frontendUrl')}/projects/${existing.projectId}`),
+        emailSubject: 'Modification administrative',
+      });
+    }
+
+    return this.getRaw(id);
+  }
+
+  /** Suppression logique (superadmin) : jamais de suppression physique - bascule en CANCELLED. */
+  async remove(id: string, reason: string, actor: AuthenticatedUser) {
+    const existing = await this.prisma.deposit.findUniqueOrThrow({ where: { id } });
+    if (existing.status === 'CANCELLED') {
+      throw AppException.conflict('DEPOSIT_ALREADY_CANCELLED', 'Ce depot est deja annule.');
+    }
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.deposit.update({ where: { id }, data: { status: 'CANCELLED', rejectionReason: reason } });
+      if (existing.status === 'APPROVED') await this.wallets.recompute(existing.projectId, tx);
+
+      await this.audit.log(
+        { userId: actor.userId, userRole: actor.role, action: 'DELETE_SOFT', entityType: 'Deposit', entityId: id, oldValue: { status: existing.status }, newValue: { status: 'CANCELLED' }, reason },
+        tx,
+      );
+    });
+
+    const client = await this.prisma.clientProfile.findUniqueOrThrow({ where: { id: existing.clientId } });
+    await this.notifications.send({
+      userId: client.userId,
+      type: 'ADMIN_CORRECTION',
+      title: 'Depot supprime',
+      message: `Un depot de ${formatMoney(existing.amount, existing.currency)} a ete supprime par le superadministrateur : ${reason}`,
+    });
+
+    return this.getRaw(id);
+  }
+
+  async setArchived(id: string, archived: boolean, actor: AuthenticatedUser) {
+    const existing = await this.prisma.deposit.findUniqueOrThrow({ where: { id } });
+    await this.prisma.deposit.update({ where: { id }, data: { isArchived: archived, archivedAt: archived ? new Date() : null } });
+
+    await this.audit.log({
+      userId: actor.userId,
+      userRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'Deposit',
+      entityId: id,
+      oldValue: { isArchived: existing.isArchived },
+      newValue: { isArchived: archived },
     });
 
     return this.getRaw(id);

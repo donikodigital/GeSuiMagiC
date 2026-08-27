@@ -1,4 +1,7 @@
-//frontend/src/services/deposits.service.ts
+// frontend/src/services/deposits.service.ts - v1.1
+// Ajout de update/remove/archive/unarchive, reserves au superadmin cote
+// backend (le service ne verifie rien lui-meme, c'est le controller qui filtre).
+
 import { api } from '@/lib/api-client';
 import type { Deposit, DepositStatus, PaginatedResponse, PaymentMethod } from '@/types/models';
 
@@ -6,6 +9,15 @@ export interface CreateDepositPayload {
   supervisorId: string;
   amount: number;
   currency?: string;
+  date?: string;
+  motif?: string;
+  paymentMethod?: PaymentMethod;
+  reference?: string;
+  observation?: string;
+}
+
+export interface UpdateDepositPayload {
+  amount?: number;
   date?: string;
   motif?: string;
   paymentMethod?: PaymentMethod;
@@ -21,6 +33,7 @@ export interface DepositFilters {
   supervisorId?: string;
   from?: string;
   to?: string;
+  includeArchived?: boolean;
 }
 
 function buildQuery(filters: object) {
@@ -44,4 +57,14 @@ export const depositsService = {
   reject: (id: string, reason: string) => api.post<Deposit>(`/deposits/${id}/reject`, { reason }),
 
   correct: (id: string, newAmount: number, reason: string) => api.post<Deposit>(`/deposits/${id}/correct`, { newAmount, reason }),
+
+  update: (id: string, payload: UpdateDepositPayload) => api.patch<Deposit>(`/deposits/${id}`, payload),
+
+  // api.delete(path, body, options) - le body est envoye tel quel en JSON,
+  // pas d'enveloppe { data: ... } (ce n'est pas Axios).
+  remove: (id: string, reason: string) => api.delete<Deposit>(`/deposits/${id}`, { reason }),
+
+  archive: (id: string) => api.patch<Deposit>(`/deposits/${id}/archive`),
+
+  unarchive: (id: string) => api.patch<Deposit>(`/deposits/${id}/unarchive`),
 };

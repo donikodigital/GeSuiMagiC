@@ -1,3 +1,4 @@
+//backend/src/deposits/dto/deposit-query.dto.ts
 import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
 import { DepositStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';

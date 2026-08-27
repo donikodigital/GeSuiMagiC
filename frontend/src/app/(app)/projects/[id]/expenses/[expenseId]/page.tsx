@@ -1,26 +1,23 @@
-// ============================================================================
-// app/(app)/projects/[id]/expenses/[expenseId]/page.tsx - v1.1
-// - En-tete : icone ronde coloree selon le statut (meme convention que
-//   AuditEntryCard/ExpenseCard) au lieu d'un simple bloc texte.
-// - Grille de champs : grid-cols-2 fixe (risque de tassement sur mobile
-//   etroit) remplacee par grid-cols-1 sm:grid-cols-2, mise sur fond bg-paper
-//   pour la detacher visuellement du reste de la carte ; champs longs
-//   ("Enregistree par", Observation, Motif) passent en pleine largeur via
-//   sm:col-span-2.
-// - Bloc "Paiement fournisseur" : icone CreditCard ajoutee, PaymentStatusEditor
-//   passe en colonne sur mobile (Select/input/bouton pleine largeur) au lieu
-//   de flex-wrap qui pouvait ecraser les elements.
-// - Icone Truck ajoutee au-dessus de la section pieces jointes pour reperage
-//   visuel rapide, coherent avec le reste des sections.
-// Aucun changement de logique/mutations.
-// ============================================================================
+// frontend/src/app/(app)/projects/[id]/expenses/[expenseId]/page.tsx - v1.2
+// Meme ajout : bouton "Contacter le superadmin" pour isClient, ouvre
+// ComposeMessageDialog pre-rempli avec le contexte de la depense.
 
 'use client';
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Ban, Check, CreditCard, Paperclip, Pencil, ReceiptText, X } from 'lucide-react';
-import { useExpense, useApproveExpense, useRejectExpense, useCancelExpense, useUpdateExpensePayment } from '@/hooks/use-expenses';
+import { Archive, ArchiveRestore, ArrowLeft, Ban, Check, CreditCard, MessageCircle, Paperclip, Pencil, ReceiptText, Trash2, X } from 'lucide-react';
+import {
+  useExpense,
+  useApproveExpense,
+  useRejectExpense,
+  useCancelExpense,
+  useUpdateExpensePayment,
+  useUpdateExpense,
+  useRemoveExpense,
+  useToggleArchiveExpense,
+} from '@/hooks/use-expenses';
+import { useCreateMessage } from '@/hooks/use-messages';
 import { useAuth } from '@/hooks/use-auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +27,8 @@ import { PageSpinner, ErrorState } from '@/components/ui/misc';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
 import { AttachmentsSection } from '@/components/shared/attachments-section';
 import { CorrectionDialog } from '@/components/shared/correction-dialog';
+import { EditExpenseDialog } from '@/components/expenses/edit-expense-dialog';
+import { ComposeMessageDialog } from '@/components/messages/compose-message-dialog';
 import { expenseStatusMeta, expensePaymentStatusMeta, formatDateTime, formatMoney } from '@/lib/format';
 import { expensesService } from '@/services/expenses.service';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -53,12 +52,19 @@ export default function ExpenseDetailPage() {
   const [rejecting, setRejecting] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
   const [correcting, setCorrecting] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [contacting, setContacting] = React.useState(false);
 
   const { data: expense, isLoading, isError } = useExpense(params.expenseId);
   const approveMutation = useApproveExpense(params.id);
   const rejectMutation = useRejectExpense(params.id);
   const cancelMutation = useCancelExpense(params.id);
   const paymentMutation = useUpdateExpensePayment(params.id);
+  const updateMutation = useUpdateExpense(params.id);
+  const removeMutation = useRemoveExpense(params.id);
+  const archiveMutation = useToggleArchiveExpense(params.id);
+  const createMessageMutation = useCreateMessage();
 
   const correctMutation = useMutation({
     mutationFn: ({ newTotal, reason }: { newTotal: number; reason: string }) => expensesService.correct(params.expenseId, newTotal, reason),
@@ -97,7 +103,10 @@ export default function ExpenseDetailPage() {
                 <p className="font-ledger text-2xl font-bold text-ink-900">{formatMoney(expense.total, '')}</p>
               </div>
             </div>
-            <StatusBadge label={expenseStatusMeta[expense.status].label} tone={statusTone} className="shrink-0" />
+            <div className="flex shrink-0 items-center gap-2">
+              {expense.isArchived && <StatusBadge label="Archivee" tone="ink" />}
+              <StatusBadge label={expenseStatusMeta[expense.status].label} tone={statusTone} />
+            </div>
           </div>
 
           <dl className="grid grid-cols-1 gap-4 rounded-card bg-paper px-4 py-3.5 text-sm sm:grid-cols-2">
@@ -142,7 +151,7 @@ export default function ExpenseDetailPage() {
             <AttachmentsSection target={{ expenseId: expense.id }} readOnly={expense.isLocked && !isSuperadmin} />
           </div>
 
-          {(canAct || (isSuperadmin && expense.status === 'APPROVED')) && (
+          {(canAct || isSuperadmin || isClient) && (
             <div className="flex flex-wrap gap-2 border-t border-concrete pt-4">
               {canAct && (
                 <>
@@ -154,14 +163,39 @@ export default function ExpenseDetailPage() {
                   </Button>
                 </>
               )}
-              {isSuperadmin && expense.status === 'APPROVED' && (
+              {isClient && (
+                <Button variant="outline" onClick={() => setContacting(true)}>
+                  <MessageCircle className="h-4 w-4" /> Contacter le superadmin
+                </Button>
+              )}
+              {isSuperadmin && (
                 <>
-                  <Button variant="outline" onClick={() => setCorrecting(true)}>
-                    <Pencil className="h-4 w-4" /> Correction administrative
+                  {expense.status === 'APPROVED' && (
+                    <>
+                      <Button variant="outline" onClick={() => setCorrecting(true)}>
+                        <Pencil className="h-4 w-4" /> Correction du montant
+                      </Button>
+                      <Button variant="danger" onClick={() => setCancelling(true)}>
+                        <Ban className="h-4 w-4" /> Annuler la validation
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="outline" onClick={() => setEditing(true)}>
+                    <Pencil className="h-4 w-4" /> Modifier
                   </Button>
-                  <Button variant="danger" onClick={() => setCancelling(true)}>
-                    <Ban className="h-4 w-4" /> Annuler la depense
+                  <Button
+                    variant="outline"
+                    loading={archiveMutation.isPending}
+                    onClick={() => archiveMutation.mutate({ id: expense.id, archive: !expense.isArchived })}
+                  >
+                    {expense.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                    {expense.isArchived ? 'Desarchiver' : 'Archiver'}
                   </Button>
+                  {expense.status !== 'CANCELLED' && (
+                    <Button variant="danger" onClick={() => setDeleting(true)}>
+                      <Trash2 className="h-4 w-4" /> Supprimer
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -190,6 +224,17 @@ export default function ExpenseDetailPage() {
         isLoading={cancelMutation.isPending}
       />
 
+      <ReasonDialog
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        onConfirm={(reason) => removeMutation.mutate({ id: expense.id, reason }, { onSuccess: () => setDeleting(false) })}
+        title="Supprimer cette depense"
+        description="La depense ne sera jamais effacee physiquement : elle passe en statut Annulee et reste consultable dans l'historique. Le client sera notifie."
+        confirmLabel="Supprimer la depense"
+        danger
+        isLoading={removeMutation.isPending}
+      />
+
       <CorrectionDialog
         open={correcting}
         onClose={() => setCorrecting(false)}
@@ -197,6 +242,28 @@ export default function ExpenseDetailPage() {
         currency=""
         onConfirm={(newTotal, reason) => correctMutation.mutate({ newTotal, reason })}
         isLoading={correctMutation.isPending}
+      />
+
+      <EditExpenseDialog
+        open={editing}
+        onClose={() => setEditing(false)}
+        expense={expense}
+        onConfirm={(payload) => updateMutation.mutate({ id: expense.id, payload }, { onSuccess: () => setEditing(false) })}
+        isLoading={updateMutation.isPending}
+      />
+
+      <ComposeMessageDialog
+        open={contacting}
+        onClose={() => setContacting(false)}
+        isSuperadmin={false}
+        isLoading={createMessageMutation.isPending}
+        defaultValues={{
+          type: 'MODIFICATION_REQUEST',
+          subject: `Depense "${expense.label}" du ${formatDateTime(expense.date)} - ${formatMoney(expense.total, '')}`,
+          relatedEntityType: 'Expense',
+          relatedEntityId: expense.id,
+        }}
+        onSubmit={(payload) => createMessageMutation.mutate(payload, { onSuccess: () => setContacting(false) })}
       />
     </div>
   );

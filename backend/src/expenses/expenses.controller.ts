@@ -1,5 +1,8 @@
-//backend/src/expenses/expenses.controller.ts
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+// backend/src/expenses/expenses.controller.ts - v1.1
+// Ajout de PATCH :id, DELETE :id, PATCH :id/archive, PATCH :id/unarchive,
+// tous reserves au superadmin.
+
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -11,6 +14,7 @@ import { RejectExpenseDto } from './dto/reject-expense.dto';
 import { CancelExpenseDto } from './dto/cancel-expense.dto';
 import { CorrectExpenseDto } from './dto/correct-expense.dto';
 import { UpdateExpensePaymentDto } from './dto/update-expense-payment.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
 
 @Controller('projects/:projectId/expenses')
 @UseGuards(ProjectAccessGuard)
@@ -67,5 +71,29 @@ export class ExpensesController {
   @Roles(UserRole.SUPERVISOR, UserRole.SUPERADMIN)
   async updatePaymentStatus(@Param('id') id: string, @Body() dto: UpdateExpensePaymentDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.updatePaymentStatus(id, dto, actor);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.SUPERADMIN)
+  async update(@Param('id') id: string, @Body() dto: UpdateExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.expensesService.update(id, dto, actor);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPERADMIN)
+  async remove(@Param('id') id: string, @Body() dto: RejectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.expensesService.remove(id, dto.reason, actor);
+  }
+
+  @Patch(':id/archive')
+  @Roles(UserRole.SUPERADMIN)
+  async archive(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.expensesService.setArchived(id, true, actor);
+  }
+
+  @Patch(':id/unarchive')
+  @Roles(UserRole.SUPERADMIN)
+  async unarchive(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.expensesService.setArchived(id, false, actor);
   }
 }

@@ -17,6 +17,9 @@ export type ExpensePaymentStatus = 'PAID_FULL' | 'PARTIAL' | 'CREDIT';
 
 export type AnomalyStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'REJECTED';
 
+export type MessageType = 'MODIFICATION_REQUEST' | 'DELETION_REQUEST' | 'ARCHIVE_REQUEST' | 'OTHER' | 'BROADCAST';
+export type MessageStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
 export interface CurrentUser {
   id: string;
   email: string;
@@ -124,6 +127,8 @@ export interface Deposit {
   status: DepositStatus;
   rejectionReason?: string | null;
   isLocked: boolean;
+  isArchived: boolean;
+  archivedAt?: string | null;
   createdAt: string;
   supervisor?: { firstName: string; lastName: string };
   attachments?: Attachment[];
@@ -173,6 +178,8 @@ export interface Expense {
   amountPaidToSupplier: string;
   balanceDueToSupplier?: string;
   isLocked: boolean;
+  isArchived: boolean;
+  archivedAt?: string | null;
   createdAt: string;
   category?: ExpenseCategory;
   material?: Material | null;
@@ -245,6 +252,33 @@ export interface NotificationItem {
   message: string;
   isRead: boolean;
   createdAt: string;
+}
+
+export interface MessageParticipant {
+  id: string;
+  email: string;
+  role?: UserRole;
+  clientProfile?: { firstName: string; lastName: string } | null;
+}
+
+export interface Message {
+  id: string;
+  type: MessageType;
+  status: MessageStatus;
+  subject: string;
+  body: string;
+  senderId: string;
+  sender?: MessageParticipant;
+  recipientId?: string | null;
+  recipient?: MessageParticipant | null;
+  relatedEntityType?: 'Deposit' | 'Expense' | null;
+  relatedEntityId?: string | null;
+  parentId?: string | null;
+  replies?: Message[];
+  isRead: boolean;
+  emailSent: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PaginatedResponse<T> {

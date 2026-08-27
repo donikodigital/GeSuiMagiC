@@ -126,4 +126,29 @@ export const emailTemplates = {
       url,
       'Traiter le signalement',
     ),
+
+  newMessage: (senderLabel: string, subject: string, body: string, url: string) =>
+    baseLayout(
+      subject,
+      `<p>Vous avez recu un nouveau message de <strong>${senderLabel}</strong>.</p><p style="white-space:pre-wrap;">${body}</p>`,
+      url,
+      'Repondre sur la plateforme',
+    ),
+
+  broadcastMessage: (recipientEmail: string, subject: string, body: string, url: string) =>
+    baseLayout(
+      subject,
+      `<p style="white-space:pre-wrap;">${body}</p>`,
+      url,
+      'Voir sur la plateforme',
+    ),
+
+  adminFieldUpdate: (clientName: string, entityType: string, changedFields: string, url: string) =>
+    baseLayout(
+      `Modification administrative`,
+      `<p>Bonjour ${clientName},</p><p>Le superadministrateur a modifie ${entityType === 'Deposit' ? 'un depot' : 'une depense'} de votre projet.</p>
+       <p>Champs modifies : <strong>${changedFields}</strong></p>`,
+      url,
+      'Voir le detail',
+    ),
 };

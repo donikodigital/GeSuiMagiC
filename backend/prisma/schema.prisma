@@ -1,6 +1,8 @@
 // ============================================================================
 // SCHEMA PRISMA - Plateforme de gestion financiere et de suivi de chantier
-// v1.0 - Voir cahier des charges pour le detail des regles metier
+// v1.1 - Voir cahier des charges pour le detail des regles metier
+// Ajout v1.1 : messagerie interne (demandes de modification/suppression/
+// archivage, diffusion groupee) + archivage souple des depots et depenses
 // ============================================================================
 
 generator client {
@@ -99,6 +101,8 @@ enum NotificationType {
   ADMIN_CORRECTION
   ANOMALY_REPORTED
   ANOMALY_UPDATED
+  MESSAGE_RECEIVED
+  BROADCAST_RECEIVED
 }
 
 enum AuditAction {
@@ -117,6 +121,23 @@ enum AuditAction {
 enum SettingScope {
   GLOBAL
   PROJECT
+}
+
+// Messagerie interne : demandes du client/superviseur vers le superadmin
+// (modification, suppression, archivage d'une ecriture) ou diffusion groupee.
+enum MessageType {
+  MODIFICATION_REQUEST
+  DELETION_REQUEST
+  ARCHIVE_REQUEST
+  OTHER
+  BROADCAST
+}
+
+enum MessageStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
 }
 
 // ----------------------------------------------------------------------------
@@ -157,6 +178,9 @@ model User {
   approvedExpenses       Expense[]           @relation("ExpenseApprovedBy")
   financialCorrections   FinancialCorrection[] @relation("CorrectionAuthor")
   reportedAnomalies      Anomaly[]           @relation("AnomalyReportedBy")
+
+  sentMessages            Message[]           @relation("MessageSender")
+  receivedMessages        Message[]           @relation("MessageRecipient")
 
   @@index([role])
   @@map("users")
@@ -354,6 +378,10 @@ model Deposit {
   // modification directe n'est permise en dehors d'une FinancialCorrection.
   isLocked        Boolean        @default(false)
 
+  // Archivage souple (n'affecte pas les totaux du wallet, sert au filtrage UI)
+  isArchived      Boolean        @default(false)
+  archivedAt      DateTime?
+
   attachments     Attachment[]
 
   createdAt       DateTime       @default(now())
@@ -457,6 +485,10 @@ model Expense {
   approvedAt          DateTime?
 
   isLocked            Boolean               @default(false)
+
+  // Archivage souple (n'affecte pas les totaux du wallet, sert au filtrage UI)
+  isArchived          Boolean               @default(false)
+  archivedAt          DateTime?
 
   attachments         Attachment[]
 
@@ -569,6 +601,51 @@ model Anomaly {
 
   @@index([projectId, status])
   @@map("anomalies")
+}
+
+// ----------------------------------------------------------------------------
+// MESSAGERIE INTERNE
+// Demandes de modification/suppression/archivage d'une ecriture, messages
+// libres, ou diffusion groupee (BROADCAST) du superadmin vers les clients.
+// recipientId = null signifie :
+//   - cote client/superviseur (type != BROADCAST) : message adresse a
+//     l'equipe superadmin dans son ensemble (pas de destinataire nominatif)
+//   - cote superadmin (type = BROADCAST) : diffusion groupee a tous les
+//     clients concernes
+// ----------------------------------------------------------------------------
+
+model Message {
+  id                String        @id @default(uuid())
+  type              MessageType
+  status            MessageStatus @default(OPEN)
+  subject           String
+  body              String
+
+  senderId          String
+  sender            User          @relation("MessageSender", fields: [senderId], references: [id])
+
+  recipientId       String?
+  recipient         User?         @relation("MessageRecipient", fields: [recipientId], references: [id])
+
+  // Lien optionnel vers l'ecriture concernee par la demande
+  relatedEntityType String? // "Deposit" | "Expense"
+  relatedEntityId   String?
+
+  // Fil de discussion (reponses a un message)
+  parentId          String?
+  parent            Message?      @relation("MessageThread", fields: [parentId], references: [id])
+  replies           Message[]     @relation("MessageThread")
+
+  isRead            Boolean       @default(false)
+  emailSent         Boolean       @default(false)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([recipientId, isRead])
+  @@index([senderId])
+  @@index([parentId])
+  @@map("messages")
 }
 
 // ----------------------------------------------------------------------------

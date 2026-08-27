@@ -1,3 +1,4 @@
+//backend/src/deposits/dto/reject-deposit.dto.ts
 import { IsString, MinLength } from 'class-validator';
 
 export class RejectDepositDto {

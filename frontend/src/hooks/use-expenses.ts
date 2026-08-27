@@ -1,9 +1,9 @@
-//frontend/src/hooks/use-expenses.ts
+// frontend/src/hooks/use-expenses.ts - v1.1
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { expensesService, type CreateExpensePayload, type ExpenseFilters } from '@/services/expenses.service';
+import { expensesService, type CreateExpensePayload, type ExpenseFilters, type UpdateExpensePayload } from '@/services/expenses.service';
 import type { ExpensePaymentStatus } from '@/types/models';
 import { ApiError } from '@/lib/api-client';
 
@@ -90,5 +90,43 @@ export function useUpdateExpensePayment(projectId: string) {
       toast.success('Statut de paiement fournisseur mis a jour.');
     },
     onError: (error) => handleError(error, 'Impossible de mettre a jour le statut de paiement.'),
+  });
+}
+
+export function useUpdateExpense(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateExpensePayload }) => expensesService.update(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      toast.success('Depense modifiee.');
+    },
+    onError: (error) => handleError(error, 'Impossible de modifier cette depense.'),
+  });
+}
+
+export function useRemoveExpense(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => expensesService.remove(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      toast.success('Depense supprimee.');
+    },
+    onError: (error) => handleError(error, "Impossible de supprimer cette depense."),
+  });
+}
+
+export function useToggleArchiveExpense(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, archive }: { id: string; archive: boolean }) => (archive ? expensesService.archive(id) : expensesService.unarchive(id)),
+    onSuccess: (_, { archive }) => {
+      queryClient.invalidateQueries({ queryKey: ['expenses', projectId] });
+      toast.success(archive ? 'Depense archivee.' : 'Depense desarchivee.');
+    },
+    onError: (error) => handleError(error, "Impossible de modifier l'archivage."),
   });
 }

@@ -1,3 +1,4 @@
+//backend/src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -29,6 +30,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
 import { AnomaliesModule } from './anomalies/anomalies.module';
 import { SettingsModule } from './settings/settings.module';
 import { ReportsModule } from './reports/reports.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -58,6 +60,7 @@ import { ReportsModule } from './reports/reports.module';
     AnomaliesModule,
     SettingsModule,
     ReportsModule,
+    MessagesModule,
   ],
   providers: [
     // Ordre d'execution : Throttler -> JwtAuth (peuple request.user) -> Roles (RBAC sur request.user.role)

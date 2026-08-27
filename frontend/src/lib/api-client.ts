@@ -99,7 +99,9 @@ export const api = {
   get: <T>(path: string, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'GET' }),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'POST', body }),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'PATCH', body }),
-  delete: <T>(path: string, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'DELETE' }),
+  // body optionnel : la plupart des DELETE n'en ont pas besoin, mais certains
+  // (ex. suppression logique d'un depot/depense) exigent un motif dans le corps.
+  delete: <T>(path: string, body?: unknown, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'DELETE', body }),
 };
 
 /** Telecharge un fichier binaire (PDF/Excel) et declenche le "Save As" du navigateur. */

@@ -1,8 +1,9 @@
+// frontend/src/hooks/use-deposits.ts - v1.1
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { depositsService, type CreateDepositPayload, type DepositFilters } from '@/services/deposits.service';
+import { depositsService, type CreateDepositPayload, type DepositFilters, type UpdateDepositPayload } from '@/services/deposits.service';
 import { ApiError } from '@/lib/api-client';
 
 function handleError(error: unknown, fallback: string) {
@@ -59,5 +60,43 @@ export function useRejectDeposit(projectId: string) {
       toast.success('Depot refuse.');
     },
     onError: (error) => handleError(error, 'Impossible de refuser ce depot.'),
+  });
+}
+
+export function useUpdateDeposit(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateDepositPayload }) => depositsService.update(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deposits', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      toast.success('Depot modifie.');
+    },
+    onError: (error) => handleError(error, 'Impossible de modifier ce depot.'),
+  });
+}
+
+export function useRemoveDeposit(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => depositsService.remove(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deposits', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      toast.success('Depot supprime.');
+    },
+    onError: (error) => handleError(error, 'Impossible de supprimer ce depot.'),
+  });
+}
+
+export function useToggleArchiveDeposit(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, archive }: { id: string; archive: boolean }) => (archive ? depositsService.archive(id) : depositsService.unarchive(id)),
+    onSuccess: (_, { archive }) => {
+      queryClient.invalidateQueries({ queryKey: ['deposits', projectId] });
+      toast.success(archive ? 'Depot archive.' : 'Depot desarchive.');
+    },
+    onError: (error) => handleError(error, "Impossible de modifier l'archivage."),
   });
 }

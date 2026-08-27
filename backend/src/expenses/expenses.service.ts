@@ -1,4 +1,11 @@
-//backend/src/expenses/expenses.service.ts
+// backend/src/expenses/expenses.service.ts - v1.1
+// Ajout de update() (edition libre multi-champs), setArchived() et remove()
+// (suppression logique -> statut CANCELLED, reutilise le meme circuit que
+// cancel() existant). Toutes reservees au superadmin (verifie au
+// controller). update() recalcule automatiquement le total si quantity
+// et/ou unitPrice changent, et passe alors par le meme circuit de
+// FinancialCorrection que correctAmount().
+
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ExpensePaymentStatus, Prisma } from '@prisma/client';
@@ -15,6 +22,7 @@ import { formatMoney, isGreaterThan, multiply, subtract, toDecimal } from '../co
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpenseQueryDto } from './dto/expense-query.dto';
 import { UpdateExpensePaymentDto } from './dto/update-expense-payment.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
 
 @Injectable()
 export class ExpensesService {
@@ -29,15 +37,6 @@ export class ExpensesService {
     private readonly config: ConfigService,
   ) {}
 
-  // ------------------------------------------------------------------
-  // CREATION (section 18-19-20)
-  //
-  // REGLE (demande explicite du client, remplace la section 20 du cahier
-  // des charges d'origine) : une depense n'est JAMAIS bloquee par un solde
-  // insuffisant. Si son montant depasse le solde disponible, le solde du
-  // projet devient simplement negatif. Aucune verification de solde n'est
-  // effectuee a la creation ni a la validation d'une depense.
-  // ------------------------------------------------------------------
   async create(projectId: string, dto: CreateExpenseDto, actor: AuthenticatedUser) {
     if (actor.role !== 'SUPERVISOR' || !actor.supervisorProfileId) {
       throw AppException.forbiddenProjectAccess();
@@ -46,8 +45,6 @@ export class ExpensesService {
     const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
     const category = await this.prisma.expenseCategory.findUniqueOrThrow({ where: { id: dto.categoryId } });
 
-    // TOTAL = QUANTITE x PRIX UNITAIRE - toujours recalcule et verifie cote backend (section 18).
-    // Le DTO n'accepte volontairement pas de champ `total` envoye par le frontend.
     const total = multiply(dto.quantity, dto.unitPrice);
 
     const { paymentStatus, amountPaidToSupplier } = this.resolvePaymentFields(
@@ -56,10 +53,6 @@ export class ExpensesService {
       dto.amountPaidToSupplier,
     );
 
-    // Section 19 : seuil de validation configurable par projet.
-    // - autoApproveExpenses = false -> confirmation du client systematiquement requise.
-    // - total > seuil -> confirmation du client requise (depense "importante").
-    // - sinon -> validation automatique immediate.
     const requiresClientConfirmation = !project.autoApproveExpenses || isGreaterThan(total, project.expenseApprovalThreshold);
     const initialStatus = requiresClientConfirmation ? 'PENDING' : 'APPROVED';
 
@@ -90,7 +83,6 @@ export class ExpensesService {
       });
 
       if (initialStatus === 'APPROVED') {
-        // Seules les depenses VALIDEES diminuent le solde (regle 7). Aucune verification bloquante.
         await this.wallets.recompute(projectId, tx);
       }
 
@@ -132,7 +124,7 @@ export class ExpensesService {
     return this.getRaw(expense.id);
   }
 
-  async findAllForProject(projectId: string, query: ExpenseQueryDto) {
+  async findAllForProject(projectId: string, query: ExpenseQueryDto & { includeArchived?: boolean }) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -142,6 +134,7 @@ export class ExpensesService {
       categoryId: query.categoryId,
       materialId: query.materialId,
       supervisorId: query.supervisorId,
+      isArchived: query.includeArchived ? undefined : false,
       supplier: query.supplier ? { contains: query.supplier, mode: 'insensitive' } : undefined,
       date: query.from || query.to ? { gte: query.from ? new Date(query.from) : undefined, lte: query.to ? new Date(query.to) : undefined } : undefined,
       total:
@@ -195,7 +188,6 @@ export class ExpensesService {
     throw AppException.forbiddenProjectAccess();
   }
 
-  /** Confirmation du client pour une depense importante (section 19). */
   async approve(id: string, actor: AuthenticatedUser) {
     const expense = await this.prisma.expense.findUniqueOrThrow({ where: { id }, include: { project: true } });
 
@@ -211,7 +203,6 @@ export class ExpensesService {
         where: { id },
         data: { status: 'APPROVED', isLocked: true, approvedById: actor.userId, approvedAt: new Date() },
       });
-      // Aucune verification de solde : le solde peut devenir negatif (regle explicite du client).
       await this.wallets.recompute(expense.projectId, tx);
 
       await this.audit.log(
@@ -268,11 +259,6 @@ export class ExpensesService {
     return this.getRaw(id);
   }
 
-  /**
-   * Annulation d'une depense validee (section 52) : jamais de suppression
-   * physique. On bascule en CANCELLED (le montant original reste visible
-   * dans l'historique) et on recalcule le solde, qui augmente d'autant.
-   */
   async cancel(id: string, reason: string, actor: AuthenticatedUser) {
     const expense = await this.prisma.expense.findUniqueOrThrow({ where: { id } });
     if (expense.status !== 'APPROVED') {
@@ -301,7 +287,6 @@ export class ExpensesService {
     return this.getRaw(id);
   }
 
-  /** Correction administrative (section 16/53), reservee au superadmin. */
   async correctAmount(id: string, newTotal: number, reason: string, actor: AuthenticatedUser) {
     const expense = await this.prisma.expense.findUniqueOrThrow({ where: { id }, include: { project: true } });
     const oldTotal = expense.total;
@@ -352,7 +337,6 @@ export class ExpensesService {
     return this.getRaw(id);
   }
 
-  /** Mise a jour du statut de paiement fournisseur - n'affecte jamais le solde du chantier. */
   async updatePaymentStatus(id: string, dto: UpdateExpensePaymentDto, actor: AuthenticatedUser) {
     const expense = await this.prisma.expense.findUniqueOrThrow({ where: { id } });
     if (actor.role === 'SUPERVISOR' && expense.supervisorId !== actor.supervisorProfileId) {
@@ -376,6 +360,124 @@ export class ExpensesService {
     return this.getRaw(id);
   }
 
+  /**
+   * Edition libre multi-champs (superadmin). Si quantity et/ou unitPrice
+   * changent, le total est recalcule et passe par le circuit de
+   * FinancialCorrection (comme correctAmount), pour garder une trace exacte
+   * de l'ancien/nouveau montant meme quand la modification vient de la
+   * quantite ou du prix unitaire plutot que du total directement.
+   */
+  async update(id: string, dto: UpdateExpenseDto, actor: AuthenticatedUser) {
+    const existing = await this.prisma.expense.findUniqueOrThrow({ where: { id } });
+
+    const nextQuantity = dto.quantity !== undefined ? toDecimal(dto.quantity) : existing.quantity;
+    const nextUnitPrice = dto.unitPrice !== undefined ? toDecimal(dto.unitPrice) : existing.unitPrice;
+    const totalChanges = dto.quantity !== undefined || dto.unitPrice !== undefined;
+    const newTotal = totalChanges ? multiply(nextQuantity, nextUnitPrice) : existing.total;
+
+    const changedFieldLabels: string[] = [];
+    if (totalChanges) changedFieldLabels.push('Quantite/Prix unitaire (total recalcule)');
+    if (dto.date !== undefined) changedFieldLabels.push('Date');
+    if (dto.categoryId !== undefined) changedFieldLabels.push('Categorie');
+    if (dto.materialId !== undefined) changedFieldLabels.push('Materiau');
+    if (dto.label !== undefined) changedFieldLabels.push('Libelle');
+    if (dto.unit !== undefined) changedFieldLabels.push('Unite');
+    if (dto.observation !== undefined) changedFieldLabels.push('Observation');
+    if (dto.supplier !== undefined) changedFieldLabels.push('Fournisseur');
+    if (dto.invoiceReference !== undefined) changedFieldLabels.push('Reference facture');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.expense.update({
+        where: { id },
+        data: {
+          date: dto.date ? new Date(dto.date) : undefined,
+          categoryId: dto.categoryId,
+          materialId: dto.materialId,
+          label: dto.label,
+          quantity: dto.quantity,
+          unit: dto.unit,
+          unitPrice: dto.unitPrice,
+          total: totalChanges ? newTotal : undefined,
+          observation: dto.observation,
+          supplier: dto.supplier,
+          invoiceReference: dto.invoiceReference,
+        },
+      });
+
+      if (totalChanges) {
+        await tx.financialCorrection.create({
+          data: { entityType: 'Expense', entityId: id, oldValue: existing.total, newValue: newTotal, reason: 'Modification administrative (edition multi-champs)', correctedById: actor.userId },
+        });
+        if (existing.status === 'APPROVED') await this.wallets.recompute(existing.projectId, tx);
+      }
+
+      await this.audit.log(
+        { userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'Expense', entityId: id, oldValue: existing, newValue: dto },
+        tx,
+      );
+    });
+
+    if (changedFieldLabels.length > 0) {
+      const project = await this.prisma.project.findUniqueOrThrow({ where: { id: existing.projectId } });
+      const client = await this.prisma.clientProfile.findUniqueOrThrow({ where: { id: project.clientId } });
+      await this.notifications.send({
+        userId: client.userId,
+        type: 'ADMIN_CORRECTION',
+        title: 'Modification administrative sur une depense',
+        message: `Champs modifies : ${changedFieldLabels.join(', ')}.`,
+        emailHtml: emailTemplates.adminFieldUpdate(client.firstName, 'Expense', changedFieldLabels.join(', '), `${this.config.get<string>('frontendUrl')}/projects/${existing.projectId}`),
+        emailSubject: 'Modification administrative',
+      });
+    }
+
+    return this.getRaw(id);
+  }
+
+  /** Suppression logique (superadmin) : jamais de suppression physique - reutilise le circuit de cancel(). */
+  async remove(id: string, reason: string, actor: AuthenticatedUser) {
+    const existing = await this.prisma.expense.findUniqueOrThrow({ where: { id }, include: { project: true } });
+    if (existing.status === 'CANCELLED') {
+      throw AppException.conflict('EXPENSE_ALREADY_CANCELLED', 'Cette depense est deja annulee.');
+    }
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.expense.update({ where: { id }, data: { status: 'CANCELLED', rejectionReason: reason } });
+      if (existing.status === 'APPROVED') await this.wallets.recompute(existing.projectId, tx);
+
+      await this.audit.log(
+        { userId: actor.userId, userRole: actor.role, action: 'DELETE_SOFT', entityType: 'Expense', entityId: id, oldValue: { status: existing.status }, newValue: { status: 'CANCELLED' }, reason },
+        tx,
+      );
+    });
+
+    const client = await this.prisma.clientProfile.findUniqueOrThrow({ where: { id: existing.project.clientId } });
+    await this.notifications.send({
+      userId: client.userId,
+      type: 'ADMIN_CORRECTION',
+      title: 'Depense supprimee',
+      message: `Une depense "${existing.label}" de ${formatMoney(existing.total, existing.project.currency)} a ete supprimee par le superadministrateur : ${reason}`,
+    });
+
+    return this.getRaw(id);
+  }
+
+  async setArchived(id: string, archived: boolean, actor: AuthenticatedUser) {
+    const existing = await this.prisma.expense.findUniqueOrThrow({ where: { id } });
+    await this.prisma.expense.update({ where: { id }, data: { isArchived: archived, archivedAt: archived ? new Date() : null } });
+
+    await this.audit.log({
+      userId: actor.userId,
+      userRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'Expense',
+      entityId: id,
+      oldValue: { isArchived: existing.isArchived },
+      newValue: { isArchived: archived },
+    });
+
+    return this.getRaw(id);
+  }
+
   // ------------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------------
@@ -383,7 +485,6 @@ export class ExpensesService {
     if (status === 'PAID_FULL') return { paymentStatus: status, amountPaidToSupplier: total };
     if (status === 'CREDIT') return { paymentStatus: status, amountPaidToSupplier: toDecimal(0) };
 
-    // PARTIAL : un acompte doit etre fourni et rester strictement entre 0 et le total.
     const amount = toDecimal(providedAmountPaid ?? 0);
     if (!isGreaterThan(amount, 0) || !isGreaterThan(total, amount)) {
       throw AppException.badRequest(
@@ -398,12 +499,6 @@ export class ExpensesService {
     return { ...expense, balanceDueToSupplier: subtract(expense.total, expense.amountPaidToSupplier) };
   }
 
-  /**
-   * Alertes financieres (section 42), best-effort et non bloquantes :
-   * - solde faible (< 10% du budget)
-   * - depense importante (> 5% du budget)
-   * - depassement de budget par categorie
-   */
   private async runPostApprovalAlerts(projectId: string, categoryId: string, expenseTotal: Prisma.Decimal, currency: string) {
     try {
       const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
@@ -412,7 +507,6 @@ export class ExpensesService {
       const budget = toDecimal(project.budget);
 
       if (budget.greaterThan(0)) {
-        // Solde faible
         if (wallet.balance.div(budget).lessThan(0.1)) {
           await this.notifications.send({
             userId: client.userId,
@@ -429,7 +523,6 @@ export class ExpensesService {
           });
         }
 
-        // Depense importante (> 5% du budget)
         if (expenseTotal.div(budget).greaterThan(0.05)) {
           await this.notifications.send({
             userId: client.userId,
@@ -440,7 +533,6 @@ export class ExpensesService {
         }
       }
 
-      // Depassement de budget par categorie
       const isOverBudget = await this.budgets.isCategoryOverBudget(projectId, categoryId);
       if (isOverBudget) {
         const category = await this.prisma.expenseCategory.findUniqueOrThrow({ where: { id: categoryId } });
@@ -459,7 +551,6 @@ export class ExpensesService {
         });
       }
     } catch (err) {
-      // Les alertes ne doivent jamais faire echouer l'operation financiere qui les declenche.
       this.logger.error(`Echec du calcul des alertes pour le projet ${projectId}`, err instanceof Error ? err.stack : String(err));
     }
   }

@@ -1,3 +1,4 @@
+//backend/src/notifications/notifications.controller.ts
 import { Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
