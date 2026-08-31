@@ -35,7 +35,7 @@ export default function ProjectBudgetsPage() {
       <div className="mb-4 flex justify-end">
         {(isClient || isSuperadmin) && (
           <Button size="sm" onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4" /> Definir un budget
+            <Plus className="h-4 w-4" /> Définir un budget
           </Button>
         )}
       </div>
@@ -44,7 +44,7 @@ export default function ProjectBudgetsPage() {
         <EmptyState
           icon={<Tags className="h-6 w-6" />}
           title="Aucun budget defini"
-          description="Definissez un budget previsionnel par categorie pour detecter les depassements."
+          description="Definissez un budget previsionnel par catégorie pour détécter les depassements."
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -68,7 +68,7 @@ export default function ProjectBudgetsPage() {
                     </div>
                     {item.isExceeded && (
                       <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-clay-600">
-                        <AlertTriangle className="h-3.5 w-3.5" /> Depasse
+                        <AlertTriangle className="h-3.5 w-3.5" /> Dépasse
                       </span>
                     )}
                   </div>
@@ -76,7 +76,7 @@ export default function ProjectBudgetsPage() {
                   <p className={`mt-3 font-ledger text-lg font-bold ${item.isExceeded ? 'text-clay-600' : 'text-ink-900'}`}>
                     {formatMoney(item.spentAmount, '')}
                   </p>
-                  <p className="text-xs text-ink-400">depense sur {formatMoney(item.budgetAmount, '')}</p>
+                  <p className="text-xs text-ink-400">dépense sur {formatMoney(item.budgetAmount, '')}</p>
 
                   <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-concrete-light">
                     <div
@@ -120,7 +120,7 @@ function BudgetDialog({ open, onClose, projectId }: { open: boolean; onClose: ()
       <div className="space-y-4">
         <FormField label="Categorie" htmlFor="budget-category" required>
           <Select id="budget-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">Selectionner</option>
+            <option value="">Séléctionner</option>
             {categories?.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}

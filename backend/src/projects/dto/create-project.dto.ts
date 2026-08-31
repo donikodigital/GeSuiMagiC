@@ -1,5 +1,10 @@
-//backend/src/projects/dto/create-project.dto.ts
-import { IsDateString, IsInt, IsNumber, IsOptional, IsPositive, IsString, MinLength } from 'class-validator';
+// backend/src/projects/dto/create-project.dto.ts - v1.1
+// Ajout de autoApproveExpenses et expenseApprovalThreshold, optionnels -
+// permet au client de choisir son propre seuil des la creation du projet
+// au lieu de subir silencieusement le defaut Prisma (5 000 000, conserve
+// uniquement comme filet de securite technique si le champ est omis).
+
+import { IsBoolean, IsDateString, IsInt, IsNumber, IsOptional, IsPositive, IsString, MinLength } from 'class-validator';
 
 export class CreateProjectDto {
   @IsString() @MinLength(2)
@@ -26,6 +31,9 @@ export class CreateProjectDto {
   budget: number;
 
   @IsOptional() @IsString() currency?: string;
+
+  @IsOptional() @IsBoolean() autoApproveExpenses?: boolean;
+  @IsOptional() @IsNumber() @IsPositive() expenseApprovalThreshold?: number;
 
   // Client uniquement renseigne par le superadmin lors d'une creation "pour le compte de" (rare) ;
   // sinon deduit automatiquement de l'utilisateur connecte (role CLIENT).

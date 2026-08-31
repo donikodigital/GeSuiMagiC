@@ -1,10 +1,13 @@
 // ============================================================================
-// dashboard-hero.tsx - v1.4
-// Ajout d'un selecteur de chantier optionnel (projectSelector), affiche
-// uniquement si la personne a 2 projets ou plus. Permet a Client/Superviseur
-// de voir le solde d'UN chantier precis plutot qu'une somme agregee de tous
-// leurs chantiers combines (qui contredisait le principe de portefeuille
-// independant par chantier annonce partout ailleurs dans l'app).
+// dashboard-hero.tsx - v1.5
+// Fix de contraste : la derniere teinte du degrade de solde ("#1B4332",
+// vert sapin tres sombre) etait quasi invisible sur le fond navy du hero
+// (signale par le client - solde supervisor illisible). Remplacee par l'or
+// deja utilise ailleurs dans ce meme composant (eyebrow, boutons d'action,
+// halo de fond) - couleur deja eprouvee pour sa lisibilite sur ce degrade
+// bleu marine precis, et qui "va avec le bleu" comme demande, plutot
+// qu'une nouvelle couleur au hasard. Reste du degrade (rouge -> orange ->
+// jaune) inchange, seule la teinte du palier le plus eleve (>50M) change.
 // ============================================================================
 
 'use client';
@@ -34,7 +37,7 @@ interface DashboardHeroProps {
   primaryTone?: 'default' | 'negative';
   /** Valeur numerique brute du solde, requise pour activer dynamicBalanceColor */
   primaryNumericValue?: number;
-  /** Colore la valeur principale selon un degrade rouge->vert sapin base sur primaryNumericValue, plutot que primaryTone */
+  /** Colore la valeur principale selon un degrade rouge->or base sur primaryNumericValue, plutot que primaryTone */
   dynamicBalanceColor?: boolean;
   /** Affiche un oeil pour masquer/afficher la valeur principale (montants sensibles) */
   maskable?: boolean;
@@ -55,10 +58,10 @@ const STAT_TONE_CLASS: Record<NonNullable<DashboardHeroStat['tone']>, string> = 
 };
 
 /**
- * Degrade rouge -> orange -> jaune -> vert sapin pour le solde disponible.
- * Seuils par tranches de 10M GNF ; seuls "negatif", "1 a 10M" et "10M a 20M"
- * etaient specifies explicitement, le reste de la progression jusqu'au vert
- * sapin a ete complete pour rester coherent - a ajuster si besoin.
+ * Degrade rouge -> orange -> jaune -> or pour le solde disponible.
+ * Seuils par tranches de 10M GNF ; le palier le plus eleve utilise
+ * desormais l'or de l'identite du hero (#C9A24A) plutot qu'un vert sapin
+ * trop sombre, illisible sur le fond navy.
  */
 function getBalanceColor(value: number): string {
   if (value < 0) return '#EF4444'; // rouge vif
@@ -67,7 +70,7 @@ function getBalanceColor(value: number): string {
   if (value <= 30_000_000) return '#F5A623'; // orange ambre
   if (value <= 40_000_000) return '#EAB308'; // jaune
   if (value <= 50_000_000) return '#A3D639'; // jaune-vert
-  return '#1B4332'; // vert sapin
+  return '#C9A24A'; // or - coherent avec l'identite du hero, lisible sur navy
 }
 
 export function DashboardHero({

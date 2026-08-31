@@ -1,10 +1,12 @@
-// backend/src/categories/categories.controller.ts - v1.2
-// Ajout de CLIENT sur create() : le client doit pouvoir ajouter des
-// categories au catalogue, au meme titre que le superadmin. update/
-// deactivate/reactivate restent reserves au superadmin (action plus
-// sensible, avec impact sur l'historique d'audit).
+// backend/src/categories/categories.controller.ts - v1.3
+// Ajout de remove() (DELETE :id), reserve au superadmin : suppression
+// definitive autorisee uniquement si la categorie n'est reference nulle
+// part (aucun materiau, aucune depense, aucun budget) - sinon erreur claire
+// invitant a desactiver plutot que supprimer. update/deactivate/reactivate
+// inchanges (deactivate reste libre, sans verification d'usage - voir note
+// de conversation).
 
-import { Body, Controller, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -46,6 +48,29 @@ export class CategoriesService {
     await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'ExpenseCategory', entityId: id, newValue: { isActive } });
     return updated;
   }
+
+  /** Suppression definitive : uniquement si non reference (materiaux, depenses, budgets). */
+  async remove(id: string, actor: AuthenticatedUser) {
+    const existing = await this.prisma.expenseCategory.findUnique({ where: { id } });
+    if (!existing) throw AppException.notFound('Categorie');
+
+    const [materialsCount, expensesCount, budgetsCount] = await Promise.all([
+      this.prisma.material.count({ where: { categoryId: id } }),
+      this.prisma.expense.count({ where: { categoryId: id } }),
+      this.prisma.budget.count({ where: { categoryId: id } }),
+    ]);
+
+    if (materialsCount + expensesCount + budgetsCount > 0) {
+      throw AppException.conflict(
+        'CATEGORY_IN_USE',
+        `Cette categorie est utilisee (${materialsCount} materiau(x), ${expensesCount} depense(s), ${budgetsCount} budget(s)) et ne peut pas etre supprimee. Desactivez-la plutot pour la retirer des nouvelles saisies.`,
+      );
+    }
+
+    await this.prisma.expenseCategory.delete({ where: { id } });
+    await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'DELETE_SOFT', entityType: 'ExpenseCategory', entityId: id, oldValue: existing });
+    return { removed: true };
+  }
 }
 
 @Controller('categories')
@@ -79,5 +104,11 @@ export class CategoriesController {
   @Roles(UserRole.SUPERADMIN)
   async reactivate(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.categoriesService.setActive(id, true, actor);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPERADMIN)
+  async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.categoriesService.remove(id, actor);
   }
 }

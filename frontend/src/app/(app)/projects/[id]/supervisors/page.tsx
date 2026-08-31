@@ -65,7 +65,7 @@ export default function ProjectSupervisorsPage() {
       )}
 
       {(project.supervisors ?? []).length === 0 ? (
-        <EmptyState title="Aucun superviseur affecte" description="Affectez un superviseur pour qu'il puisse enregistrer des depenses sur ce chantier." />
+        <EmptyState title="Aucun superviseur affecté" description="Affectez un superviseur pour qu'il puisse enregistrer des dépenses sur ce chantier." />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {project.supervisors!.map(({ supervisor }) => (

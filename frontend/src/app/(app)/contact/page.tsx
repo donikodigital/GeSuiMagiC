@@ -42,8 +42,8 @@ function ContactPageContent() {
         title="Contact"
         description={
           isSuperadmin
-            ? 'Echangez avec vos clients : demandes de modification, suppression ou archivage, et diffusions groupees.'
-            : 'Contactez le superadministrateur pour toute demande de modification, suppression ou archivage sur un depot ou une depense.'
+            ? 'Echangez avec vos clients : demandes de modification, suppression ou archivage, et diffusions groupées.'
+            : 'Contactez le superadministrateur pour toute demande de modification, suppression ou archivage sur un dépôt ou une dépense.'
         }
         actions={
           <Button onClick={() => setComposeOpen(true)}>
@@ -58,7 +58,7 @@ function ContactPageContent() {
           <option value="OPEN">Ouverts</option>
           <option value="IN_PROGRESS">En cours</option>
           <option value="RESOLVED">Resolus</option>
-          <option value="CLOSED">Fermes</option>
+          <option value="CLOSED">Fermés</option>
         </Select>
       </div>
 
@@ -69,7 +69,7 @@ function ContactPageContent() {
       ) : (data?.items.length ?? 0) === 0 ? (
         <EmptyState
           title="Aucun message"
-          description={isSuperadmin ? 'Aucune demande client pour le moment.' : "Vous n'avez pas encore contacte le superadministrateur."}
+          description={isSuperadmin ? 'Aucune demande client pour le moment.' : "Vous n'avez pas encore contacté le superadministrateur."}
         />
       ) : (
         <div className="space-y-3">

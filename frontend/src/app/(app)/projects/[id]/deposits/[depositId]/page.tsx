@@ -52,14 +52,14 @@ export default function DepositDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
       queryClient.invalidateQueries({ queryKey: ['projects', params.id] });
-      toast.success('Correction appliquee, historique conserve.');
+      toast.success('Correction appliquée, historique conserve.');
       setCorrecting(false);
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Correction impossible.'),
   });
 
   if (isLoading) return <PageSpinner />;
-  if (isError || !deposit) return <ErrorState message="Impossible de charger ce depot." />;
+  if (isError || !deposit) return <ErrorState message="Impossible de charger ce dépôt." />;
 
   const canAct = isSupervisor && deposit.status === 'PENDING';
 
@@ -73,11 +73,11 @@ export default function DepositDetailPage() {
         <CardContent className="space-y-5">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-400">Depot</p>
+              <p className="text-xs uppercase tracking-wide text-ink-400">Dépôt</p>
               <p className="font-ledger text-2xl font-semibold text-ink-900">{formatMoney(deposit.amount, deposit.currency)}</p>
             </div>
             <div className="flex items-center gap-2">
-              {deposit.isArchived && <StatusBadge label="Archive" tone="ink" />}
+              {deposit.isArchived && <StatusBadge label="Archivé" tone="ink" />}
               <StatusBadge label={depositStatusMeta[deposit.status].label} tone={depositStatusMeta[deposit.status].tone} />
             </div>
           </div>
@@ -86,14 +86,14 @@ export default function DepositDetailPage() {
             <Field label="Date" value={formatDateTime(deposit.date)} />
             <Field label="Mode de versement" value={paymentMethodLabels[deposit.paymentMethod]} />
             <Field label="Motif" value={deposit.motif || '-'} />
-            <Field label="Reference" value={deposit.reference || '-'} />
-            {deposit.supervisor && <Field label="Superviseur beneficiaire" value={`${deposit.supervisor.firstName} ${deposit.supervisor.lastName}`} />}
+            <Field label="Réference" value={deposit.reference || '-'} />
+            {deposit.supervisor && <Field label="Superviseur bénéficiaire" value={`${deposit.supervisor.firstName} ${deposit.supervisor.lastName}`} />}
             {deposit.observation && <Field label="Observation" value={deposit.observation} full />}
-            {deposit.rejectionReason && <Field label="Motif du refus/suppression" value={deposit.rejectionReason} full />}
+            {deposit.rejectionReason && <Field label="Motif du réfus/suppression" value={deposit.rejectionReason} full />}
           </dl>
 
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-400">Pieces jointes</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-400">Pièces jointes</p>
             <AttachmentsSection target={{ depositId: deposit.id }} readOnly={deposit.isLocked && !isSuperadmin} />
           </div>
 
@@ -102,7 +102,7 @@ export default function DepositDetailPage() {
               {canAct && (
                 <>
                   <Button onClick={() => approveMutation.mutate(deposit.id)} loading={approveMutation.isPending}>
-                    <Check className="h-4 w-4" /> Valider le depot
+                    <Check className="h-4 w-4" /> Valider le dépôt
                   </Button>
                   <Button variant="outline" onClick={() => setRejecting(true)}>
                     <X className="h-4 w-4" /> Refuser
@@ -148,8 +148,8 @@ export default function DepositDetailPage() {
         open={rejecting}
         onClose={() => setRejecting(false)}
         onConfirm={(reason) => rejectMutation.mutate({ id: deposit.id, reason }, { onSuccess: () => setRejecting(false) })}
-        title="Refuser ce depot"
-        confirmLabel="Refuser"
+        title="Réfuser ce dépôt"
+        confirmLabel="Réfuser"
         danger
         isLoading={rejectMutation.isPending}
       />
@@ -158,9 +158,9 @@ export default function DepositDetailPage() {
         open={deleting}
         onClose={() => setDeleting(false)}
         onConfirm={(reason) => removeMutation.mutate({ id: deposit.id, reason }, { onSuccess: () => setDeleting(false) })}
-        title="Supprimer ce depot"
-        description="Le depot ne sera jamais efface physiquement : il passe en statut Annule et reste consultable dans l'historique. Le client sera notifie."
-        confirmLabel="Supprimer le depot"
+        title="Supprimer ce dépôt"
+        description="Le dépôt ne sera jamais effacé physiquement : il passe en statut Annulé et reste consultable dans l'historique. Le client sera notifié."
+        confirmLabel="Supprimer le dépôt"
         danger
         isLoading={removeMutation.isPending}
       />
@@ -189,7 +189,7 @@ export default function DepositDetailPage() {
         isLoading={createMessageMutation.isPending}
         defaultValues={{
           type: 'MODIFICATION_REQUEST',
-          subject: `Depot du ${formatDateTime(deposit.date)} - ${formatMoney(deposit.amount, deposit.currency)}`,
+          subject: `Dépôt du ${formatDateTime(deposit.date)} - ${formatMoney(deposit.amount, deposit.currency)}`,
           relatedEntityType: 'Deposit',
           relatedEntityId: deposit.id,
         }}

@@ -79,7 +79,7 @@ export default function ProjectAnomaliesPage() {
                     <p className="mt-1 text-sm text-ink-800">{a.description}</p>
                     <p className="mt-1 text-xs text-ink-400">{formatDate(a.createdAt)}</p>
                     {a.resolutionNote && (
-                      <p className="mt-2 rounded-md bg-paper px-3 py-2 text-xs text-ink-600">Reponse : {a.resolutionNote}</p>
+                      <p className="mt-2 rounded-md bg-paper px-3 py-2 text-xs text-ink-600">Réponse : {a.resolutionNote}</p>
                     )}
                   </div>
                 </CardContent>
@@ -103,7 +103,7 @@ function AnomalyDialog({ open, onClose, projectId }: { open: boolean; onClose: (
     mutationFn: () => anomaliesService.create(projectId, { category, description }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['anomalies', projectId] });
-      toast.success('Signalement envoye au superadmin.');
+      toast.success('Signalement envoyé au superadmin.');
       onClose();
       setDescription('');
     },
@@ -115,7 +115,7 @@ function AnomalyDialog({ open, onClose, projectId }: { open: boolean; onClose: (
       <div className="space-y-4">
         <div className="flex items-start gap-2 rounded-card border border-safety-200 bg-safety-50 px-3.5 py-3 text-xs text-safety-500">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>Le superadministrateur sera notifie et pourra vous repondre directement.</p>
+          <p>Le superadministrateur sera notifié et pourra vous repondre directement.</p>
         </div>
 
         <FormField label="Type d'anomalie" htmlFor="anomaly-category" required>

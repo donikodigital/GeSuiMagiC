@@ -1,4 +1,9 @@
-//frontend/src/hooks/use-projects.ts
+// frontend/src/hooks/use-projects.ts - v1.2
+// Ajout de useUpdateProjectFinancials (budget + autoApproveExpenses +
+// expenseApprovalThreshold ensemble), utilise par la nouvelle page de
+// reglages projet. useUpdateProjectBudget est conserve tel quel pour la
+// carte "Budget" de l'apercu, qui ne touche qu'a ce seul champ.
+
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -56,6 +61,33 @@ export function useUpdateProjectStatus(projectId: string) {
       toast.success('Statut du projet mis a jour.');
     },
     onError: (error) => handleError(error, 'Impossible de mettre a jour le statut.'),
+  });
+}
+
+export function useUpdateProjectBudget(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (budget: number) => projectsService.updateFinancials(projectId, { budget }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'financial-summary'] });
+      toast.success('Budget mis a jour.');
+    },
+    onError: (error) => handleError(error, 'Impossible de modifier le budget.'),
+  });
+}
+
+export function useUpdateProjectFinancials(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { budget?: number; autoApproveExpenses?: boolean; expenseApprovalThreshold?: number }) =>
+      projectsService.updateFinancials(projectId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'financial-summary'] });
+      toast.success('Parametres financiers mis a jour.');
+    },
+    onError: (error) => handleError(error, 'Impossible de mettre a jour les parametres financiers.'),
   });
 }
 

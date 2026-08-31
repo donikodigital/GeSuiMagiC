@@ -1,27 +1,30 @@
-// ============================================================================
-// supervisor-dashboard.tsx - v2.4
-// Refonte visuelle des cartes "Detail par chantier" alignee sur le meme
-// langage que client-dashboard.tsx v2.3 : icone HardHat + nom/localisation
-// en en-tete, bandeau de couleur selon le statut, bloc "Solde disponible"
-// sur fond distinct. Les deux actions (Enregistrer une depense / acces
-// rapide au projet) restent en pied de carte, inchangees dans leur
-// fonctionnement.
-// Aucun changement de logique/donnees : meme calcul de balance/activeCount,
-// meme selecteur de projet dans le hero.
-// ============================================================================
+// frontend/src/components/dashboard/supervisor-dashboard.tsx - v2.5
+// Ajout d'une carte "respirante" cliquable entre le hero et "Detail par
+// chantier" (agregeant les depots en attente sur tous les chantiers du
+// superviseur via useSupervisorPendingDeposits) - jusqu'ici il fallait
+// naviguer manuellement vers l'onglet Depots d'un projet pour valider.
+// - 1 seul depot en attente -> clic ouvre directement PendingDepositActionDialog.
+// - Plusieurs -> clic ouvre une liste (DepositCard) pour choisir lequel traiter.
+// - 0 -> carte non affichee (pas d'encombrement inutile).
+// Reste du fichier (hero, grille "Detail par chantier") inchange.
 
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowRight, HardHat, ReceiptText } from 'lucide-react';
+import { ArrowRight, ChevronRight, Clock, HardHat, ReceiptText } from 'lucide-react';
 import { useProjects } from '@/hooks/use-projects';
+import { useSupervisorPendingDeposits } from '@/hooks/use-supervisor-pending-deposits';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import { PageSpinner, EmptyState, ErrorState } from '@/components/ui/misc';
 import { StatusBadge } from '@/components/ui/badge';
+import { DepositCard } from '@/components/deposits/deposit-card';
+import { PendingDepositActionDialog } from '@/components/deposits/pending-deposit-action-dialog';
 import { formatMoney, projectStatusMeta } from '@/lib/format';
 import { DashboardHero } from './dashboard-hero';
+import type { Deposit } from '@/types/models';
 
 const STATUS_BAR_GRADIENT: Record<string, string> = {
   moss: 'from-moss-500 to-moss-300',
@@ -34,11 +37,14 @@ const STATUS_BAR_GRADIENT: Record<string, string> = {
 export function SupervisorDashboard() {
   const { data, isLoading, isError } = useProjects({ limit: 100 });
   const [selectedProjectId, setSelectedProjectId] = React.useState<string | undefined>(undefined);
+  const [selectedDeposit, setSelectedDeposit] = React.useState<Deposit | null>(null);
+  const [showPendingList, setShowPendingList] = React.useState(false);
+
+  const projects = data?.items ?? [];
+  const pending = useSupervisorPendingDeposits(projects);
 
   if (isLoading) return <PageSpinner />;
   if (isError) return <ErrorState message="Impossible de charger vos projets." />;
-
-  const projects = data?.items ?? [];
 
   if (projects.length === 0) {
     return <EmptyState title="Aucun chantier affecte" description="Le client n'a pas encore affecte de projet a votre compte." />;
@@ -75,8 +81,32 @@ export function SupervisorDashboard() {
         ]}
       />
 
+      {!pending.isLoading && pending.totalCount > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            if (pending.totalCount === 1) setSelectedDeposit(pending.items[0]);
+            else setShowPendingList(true);
+          }}
+          className="group flex w-full items-center gap-4 rounded-2xl border border-safety-200 bg-safety-50 p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-safety-100 text-safety-600">
+            <Clock className="h-6 w-6" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-base font-semibold text-ink-900">
+              {pending.totalCount} dépôt{pending.totalCount > 1 ? 's' : ''} en attente de validation
+            </p>
+            <p className="mt-0.5 text-sm text-ink-500">
+              Total : <span className="font-ledger font-semibold text-ink-800">{formatMoney(pending.totalAmount, pending.currency)}</span>
+            </p>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-ink-400 transition-transform group-hover:translate-x-0.5" />
+        </button>
+      )}
+
       <div>
-        <h2 className="mb-4 font-display text-lg font-semibold text-ink-900">Detail par chantier</h2>
+        <h2 className="mb-4 font-display text-lg font-semibold text-ink-900">Détail par chantier</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => {
             const statusTone = projectStatusMeta[project.status].tone;
@@ -109,7 +139,7 @@ export function SupervisorDashboard() {
                 <div className="flex gap-2 border-t border-concrete px-5 py-3">
                   <Link href={`/projects/${project.id}/expenses/new`} className="flex-1">
                     <Button size="sm" className="w-full">
-                      <ReceiptText className="h-4 w-4" /> Enregistrer une depense
+                      <ReceiptText className="h-4 w-4" /> Enregistrer une dépense
                     </Button>
                   </Link>
                   <Link href={`/projects/${project.id}`}>
@@ -123,6 +153,31 @@ export function SupervisorDashboard() {
           })}
         </div>
       </div>
+
+      {selectedDeposit && (
+        <PendingDepositActionDialog
+          deposit={selectedDeposit}
+          projectName={pending.projectNameById.get(selectedDeposit.projectId)}
+          onClose={() => setSelectedDeposit(null)}
+        />
+      )}
+
+      {showPendingList && (
+        <Dialog open onClose={() => setShowPendingList(false)} title="Depots en attente" description="Selectionnez un depot pour le valider ou le refuser.">
+          <div className="space-y-3">
+            {pending.items.map((d) => (
+              <DepositCard
+                key={d.id}
+                deposit={d}
+                onClick={() => {
+                  setShowPendingList(false);
+                  setSelectedDeposit(d);
+                }}
+              />
+            ))}
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

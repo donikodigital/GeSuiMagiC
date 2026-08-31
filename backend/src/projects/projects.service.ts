@@ -1,4 +1,9 @@
-//backend/src/projects/projects.service.ts
+// backend/src/projects/projects.service.ts - v1.2
+// create() transmet desormais autoApproveExpenses et expenseApprovalThreshold
+// si fournis par le formulaire de creation - la valeur Prisma par defaut ne
+// s'applique plus que si le champ est explicitement omis (filet de securite
+// technique, plus une valeur figee subie).
+
 import { Injectable } from '@nestjs/common';
 import { Prisma, ProjectStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,7 +25,6 @@ export class ProjectsService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Regle 1 : un projet appartient a un seul client. Regle 2 : portefeuille independant. */
   async create(dto: CreateProjectDto, clientId: string, actor: AuthenticatedUser) {
     const currency = dto.currency ?? 'GNF';
 
@@ -45,6 +49,8 @@ export class ProjectsService {
           budget: dto.budget,
           currency,
           status: ProjectStatus.DRAFT,
+          autoApproveExpenses: dto.autoApproveExpenses,
+          expenseApprovalThreshold: dto.expenseApprovalThreshold,
         },
       });
 
@@ -140,14 +146,12 @@ export class ProjectsService {
     return updated;
   }
 
-  /** Reserve au superadmin (budget/devise) ou au client pour son seuil de validation. */
   async updateFinancials(id: string, dto: UpdateProjectFinancialsDto, actor: AuthenticatedUser) {
     if (actor.role === 'CLIENT') {
-      // Le client ne peut ajuster QUE son seuil de validation, pas le budget/la devise.
-      const allowedForClient: (keyof UpdateProjectFinancialsDto)[] = ['autoApproveExpenses', 'expenseApprovalThreshold'];
+      const allowedForClient: (keyof UpdateProjectFinancialsDto)[] = ['budget', 'autoApproveExpenses', 'expenseApprovalThreshold'];
       const attemptedForbidden = Object.keys(dto).some((k) => !allowedForClient.includes(k as keyof UpdateProjectFinancialsDto));
       if (attemptedForbidden) {
-        throw AppException.badRequest('FORBIDDEN_FIELD', "Seul le superadmin peut modifier le budget ou la devise d'un projet.");
+        throw AppException.badRequest('FORBIDDEN_FIELD', "Seul le superadmin peut modifier la devise ou le cout estimatif d'un projet.");
       }
     }
 
@@ -188,15 +192,11 @@ export class ProjectsService {
     return updated;
   }
 
-  // ------------------------------------------------------------------
-  // Affectation des superviseurs (section 11)
-  // ------------------------------------------------------------------
   async assignSupervisor(projectId: string, supervisorId: string, actor: AuthenticatedUser) {
     const supervisor = await this.prisma.supervisorProfile.findUnique({ where: { id: supervisorId } });
     if (!supervisor) throw AppException.notFound('Superviseur');
 
     const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
-    // Le superviseur doit appartenir au meme client que le projet (isolation multi-tenant).
     if (supervisor.clientId !== project.clientId) throw AppException.forbiddenProjectAccess();
 
     const assignment = await this.prisma.projectSupervisor.upsert({

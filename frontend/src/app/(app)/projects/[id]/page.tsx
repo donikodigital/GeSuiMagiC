@@ -1,37 +1,17 @@
-// ============================================================================
-// app/(app)/projects/[id]/page.tsx - v1.3
-// Grille des 4 cartes resume passee en responsive : 2 colonnes fixes sur
-// mobile (au lieu de 3/4 colonnes ecrasees qui tronquaient les montants),
-// puis cardCount colonnes (3 pour superviseur, 4 sinon) a partir de sm:.
-// Remplace le style inline gridTemplateColumns par des classes Tailwind -
-// necessaire car cardCount est dynamique et Tailwind ne peut pas generer
-// une classe a partir d'un template literal.
-// ============================================================================
-//
-// - Les 4 StatCard generiques sont remplacees par des cartes custom avec
-//   icone dediee (Budget/Verse/Depense/Solde), pour un reperage plus rapide.
-// - "Total depense" affiche desormais une vraie barre de progression
-//   (meme logique moss/safety/clay que les cartes chantier du dashboard
-//   client) au lieu du texte plat "X% du budget".
-// - Le graphique "Vue financiere" colore chaque barre individuellement via
-//   <Cell> (recharts) plutot qu'une seule couleur uniforme.
-// - Le bouton d'action principal (Nouveau depot / Nouvelle depense) passe
-//   en accent or, coherent avec le CTA principal du hero de dashboard.
-// - La liste "Transactions recentes" affiche une puce fleche haut/bas par
-//   type au lieu de ne se distinguer que par la couleur du montant.
-//
-// NOTE : les couleurs des barres (#4a7c59 pour "Verse", #b5533c pour
-// "Depense") sont des approximations de tes tokens moss/clay - je n'ai pas
-// les valeurs hex exactes de ton tailwind.config. Ajuste-les si besoin.
-// ============================================================================
+// frontend/src/app/(app)/projects/[id]/page.tsx - v1.4
+// Carte "Budget" rendue cliquable pour isClient et isSuperadmin (les seuls
+// roles pour qui cette carte s'affiche - deja exclue pour isSupervisor),
+// ouvre EditBudgetDialog. Reste du fichier (graphique, transactions
+// recentes, cartes Verse/Depense/Solde) inchange.
 
 'use client';
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import * as React from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Plus, ReceiptText, Wallet, ArrowDownToLine, ArrowUpFromLine, PiggyBank, ArrowDownRight, ArrowUpRight } from 'lucide-react';
-import { useProjectFinancialSummary } from '@/hooks/use-projects';
+import { Plus, ReceiptText, Wallet, ArrowDownToLine, ArrowUpFromLine, PiggyBank, ArrowDownRight, ArrowUpRight, Pencil } from 'lucide-react';
+import { useProjectFinancialSummary, useUpdateProjectBudget } from '@/hooks/use-projects';
 import { useDeposits } from '@/hooks/use-deposits';
 import { useExpenses } from '@/hooks/use-expenses';
 import { useAuth } from '@/hooks/use-auth';
@@ -39,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
 import { StatusBadge } from '@/components/ui/badge';
+import { EditBudgetDialog } from '@/components/projects/edit-budget-dialog';
 import { formatDate, formatMoney, depositStatusMeta, expenseStatusMeta } from '@/lib/format';
 
 const BAR_COLORS: Record<string, string> = {
@@ -50,10 +31,12 @@ const BAR_COLORS: Record<string, string> = {
 
 export default function ProjectOverviewPage() {
   const params = useParams<{ id: string }>();
-  const { isClient, isSupervisor } = useAuth();
+  const { isClient, isSupervisor, isSuperadmin } = useAuth();
   const { data: summary, isLoading, isError } = useProjectFinancialSummary(params.id);
   const { data: recentDeposits } = useDeposits(params.id, { limit: 5 });
   const { data: recentExpenses } = useExpenses(params.id, { limit: 5 });
+  const [editingBudget, setEditingBudget] = React.useState(false);
+  const updateBudgetMutation = useUpdateProjectBudget(params.id);
 
   if (isLoading) return <PageSpinner />;
   if (isError || !summary) return <ErrorState message="Impossible de charger le resume financier." />;
@@ -62,6 +45,7 @@ export default function ProjectOverviewPage() {
   const usedPct = Math.max(0, Number(summary.budgetUsedPercent) || 0);
   const usedPctClamped = Math.min(100, usedPct);
   const balanceTone = balance < 0 ? 'clay' : usedPct > 90 ? 'safety' : 'moss';
+  const canEditBudget = isClient || isSuperadmin;
 
   const chartData = [
     { label: 'Budget', value: parseFloat(summary.budget) },
@@ -83,11 +67,17 @@ export default function ProjectOverviewPage() {
     <div className="space-y-6">
       <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${cardCount === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
         {!isSupervisor && (
-          <Card className="min-w-0">
+          <Card
+            className={`min-w-0 ${canEditBudget ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}`}
+            onClick={canEditBudget ? () => setEditingBudget(true) : undefined}
+          >
             <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">
-              <div className="flex items-center gap-1.5 text-ink-500">
-                <Wallet className="h-3.5 w-3.5 shrink-0" />
-                <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Budget</p>
+              <div className="flex items-center justify-between gap-1.5 text-ink-500">
+                <div className="flex items-center gap-1.5">
+                  <Wallet className="h-3.5 w-3.5 shrink-0" />
+                  <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Budget</p>
+                </div>
+                {canEditBudget && <Pencil className="h-3 w-3 shrink-0 text-ink-300" />}
               </div>
               <p className="truncate font-ledger text-sm font-semibold text-ink-900 sm:text-base">{formatMoney(summary.budget, summary.currency)}</p>
             </CardContent>
@@ -235,6 +225,17 @@ export default function ProjectOverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      {canEditBudget && (
+        <EditBudgetDialog
+          open={editingBudget}
+          onClose={() => setEditingBudget(false)}
+          currentBudget={summary.budget}
+          currency={summary.currency}
+          onConfirm={(newBudget) => updateBudgetMutation.mutate(newBudget, { onSuccess: () => setEditingBudget(false) })}
+          isLoading={updateBudgetMutation.isPending}
+        />
+      )}
     </div>
   );
 }

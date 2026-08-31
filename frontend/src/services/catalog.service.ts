@@ -1,4 +1,8 @@
-//frontend/src/services/catalog.service.ts
+// frontend/src/services/catalog.service.ts - v1.1
+// Ajout de remove() pour categories/materiaux/unites, et de update() pour
+// les unites (le backend n'exposait pas encore de PATCH generique pour les
+// unites - ajoute en parallele dans units.controller.ts).
+
 import { api } from '@/lib/api-client';
 import type { ExpenseCategory, Material, Unit } from '@/types/models';
 
@@ -9,6 +13,7 @@ export const catalogService = {
     update: (id: string, payload: { name?: string; group?: string }) => api.patch<ExpenseCategory>(`/categories/${id}`, payload),
     deactivate: (id: string) => api.patch<ExpenseCategory>(`/categories/${id}/deactivate`),
     reactivate: (id: string) => api.patch<ExpenseCategory>(`/categories/${id}/reactivate`),
+    remove: (id: string) => api.delete<{ removed: boolean }>(`/categories/${id}`),
   },
   materials: {
     list: (categoryId?: string, includeInactive = false) =>
@@ -18,11 +23,14 @@ export const catalogService = {
       api.patch<Material>(`/materials/${id}`, payload),
     deactivate: (id: string) => api.patch<Material>(`/materials/${id}/deactivate`),
     reactivate: (id: string) => api.patch<Material>(`/materials/${id}/reactivate`),
+    remove: (id: string) => api.delete<{ removed: boolean }>(`/materials/${id}`),
   },
   units: {
     list: (includeInactive = false) => api.get<Unit[]>(`/units?includeInactive=${includeInactive}`),
     create: (payload: { name: string; symbol?: string }) => api.post<Unit>('/units', payload),
+    update: (id: string, payload: { name?: string; symbol?: string }) => api.patch<Unit>(`/units/${id}`, payload),
     deactivate: (id: string) => api.patch<Unit>(`/units/${id}/deactivate`),
     reactivate: (id: string) => api.patch<Unit>(`/units/${id}/reactivate`),
+    remove: (id: string) => api.delete<{ removed: boolean }>(`/units/${id}`),
   },
 };

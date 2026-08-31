@@ -89,7 +89,7 @@ export function MessageCard({ message, currentUserId, onClick }: { message: Mess
             <>
               <span className="text-ink-300">·</span>
               <span>
-                {replyCount} reponse{replyCount > 1 ? 's' : ''}
+                {replyCount} réponse{replyCount > 1 ? 's' : ''}
               </span>
             </>
           )}

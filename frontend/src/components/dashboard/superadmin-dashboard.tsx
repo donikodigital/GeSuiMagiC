@@ -90,7 +90,7 @@ export function SuperadminDashboard() {
 
       <div>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold text-ink-900">Projets recents</h2>
+          <h2 className="font-display text-lg font-semibold text-ink-900">Projets récents</h2>
           <Link href="/projects" className="flex items-center gap-1 text-sm font-medium text-blueprint-600 hover:underline">
             Voir tout <ArrowRight className="h-3.5 w-3.5" />
           </Link>

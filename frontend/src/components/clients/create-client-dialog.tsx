@@ -1,4 +1,11 @@
-//frontend/src/components/clients/create-client-dialog.tsx
+// frontend/src/components/clients/create-client-dialog.tsx - v1.1
+// Harmonisation avec edit-client-dialog.tsx : ajout de profession, address
+// et companyAddress au formulaire de creation (deja acceptes par
+// CreateClientDto cote backend, mais jusque-la absents du formulaire -
+// obligeant a repasser par "Modifier" juste apres la creation pour les
+// completer). Memes champs, meme ordre que le formulaire d'edition, moins
+// email (propre a la creation) et plus firstProject (non gere ici).
+
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -17,9 +24,12 @@ const schema = z.object({
   firstName: z.string().min(1, 'Requis'),
   lastName: z.string().min(1, 'Requis'),
   phone: z.string().optional(),
+  profession: z.string().optional(),
+  address: z.string().optional(),
   city: z.string().optional(),
   country: z.string().optional(),
   companyName: z.string().optional(),
+  companyAddress: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -47,7 +57,7 @@ export function CreateClientDialog({ open, onClose, onCreated }: { open: boolean
   return (
     <Dialog open={open} onClose={onClose} title="Nouveau client" description="Un email d'invitation securise lui sera envoye automatiquement.">
       <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FormField label="Prenom" htmlFor="firstName" required error={errors.firstName?.message}>
             <Input id="firstName" {...register('firstName')} />
           </FormField>
@@ -55,13 +65,25 @@ export function CreateClientDialog({ open, onClose, onCreated }: { open: boolean
             <Input id="lastName" {...register('lastName')} />
           </FormField>
         </div>
+
         <FormField label="Email" htmlFor="email" required error={errors.email?.message}>
           <Input id="email" type="email" {...register('email')} />
         </FormField>
-        <FormField label="Telephone" htmlFor="phone">
-          <Input id="phone" {...register('phone')} />
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <FormField label="Telephone" htmlFor="phone">
+            <Input id="phone" {...register('phone')} />
+          </FormField>
+          <FormField label="Profession" htmlFor="profession">
+            <Input id="profession" {...register('profession')} />
+          </FormField>
+        </div>
+
+        <FormField label="Adresse" htmlFor="address">
+          <Input id="address" {...register('address')} />
         </FormField>
-        <div className="grid grid-cols-2 gap-3">
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FormField label="Ville" htmlFor="city">
             <Input id="city" {...register('city')} />
           </FormField>
@@ -69,8 +91,13 @@ export function CreateClientDialog({ open, onClose, onCreated }: { open: boolean
             <Input id="country" {...register('country')} />
           </FormField>
         </div>
+
         <FormField label="Societe" htmlFor="companyName">
           <Input id="companyName" {...register('companyName')} />
+        </FormField>
+
+        <FormField label="Adresse de la societe" htmlFor="companyAddress">
+          <Input id="companyAddress" {...register('companyAddress')} />
         </FormField>
 
         <div className="flex justify-end gap-2 pt-2">

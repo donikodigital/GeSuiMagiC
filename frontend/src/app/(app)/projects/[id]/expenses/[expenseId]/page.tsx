@@ -71,14 +71,14 @@ export default function ExpenseDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['projects', params.id] });
-      toast.success('Correction appliquee, historique conserve.');
+      toast.success('Correction appliquée, historique conservée.');
       setCorrecting(false);
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Correction impossible.'),
   });
 
   if (isLoading) return <PageSpinner />;
-  if (isError || !expense) return <ErrorState message="Impossible de charger cette depense." />;
+  if (isError || !expense) return <ErrorState message="Impossible de charger cette dépense." />;
 
   const canAct = isClient && expense.status === 'PENDING';
   const canUpdatePayment = (isSupervisor || isSuperadmin) && expense.status === 'APPROVED';
@@ -111,10 +111,10 @@ export default function ExpenseDetailPage() {
 
           <dl className="grid grid-cols-1 gap-4 rounded-card bg-paper px-4 py-3.5 text-sm sm:grid-cols-2">
             <Field label="Date" value={formatDateTime(expense.date)} />
-            <Field label="Quantite" value={`${expense.quantity} ${expense.unit} × ${formatMoney(expense.unitPrice, '')}`} />
+            <Field label="Quantité" value={`${expense.quantity} ${expense.unit} × ${formatMoney(expense.unitPrice, '')}`} />
             <Field label="Fournisseur" value={expense.supplier || '-'} />
-            <Field label="Reference facture" value={expense.invoiceReference || '-'} />
-            {expense.supervisor && <Field label="Enregistree par" value={`${expense.supervisor.firstName} ${expense.supervisor.lastName}`} full />}
+            <Field label="Référence facture" value={expense.invoiceReference || '-'} />
+            {expense.supervisor && <Field label="Enregistrée par" value={`${expense.supervisor.firstName} ${expense.supervisor.lastName}`} full />}
             {expense.observation && <Field label="Observation" value={expense.observation} full />}
             {expense.rejectionReason && <Field label="Motif" value={expense.rejectionReason} full />}
           </dl>
@@ -129,7 +129,7 @@ export default function ExpenseDetailPage() {
             </div>
             {expense.paymentStatus === 'PARTIAL' && (
               <p className="mt-2 text-sm text-ink-600">
-                Verse : <span className="font-ledger">{formatMoney(expense.amountPaidToSupplier, '')}</span> — Reste du :{' '}
+                Versé : <span className="font-ledger">{formatMoney(expense.amountPaidToSupplier, '')}</span> — Reste dû :{' '}
                 <span className="font-ledger font-medium">{formatMoney(expense.balanceDueToSupplier ?? '0', '')}</span>
               </p>
             )}
@@ -146,7 +146,7 @@ export default function ExpenseDetailPage() {
           <div>
             <div className="mb-2 flex items-center gap-2">
               <Paperclip className="h-4 w-4 text-ink-400" />
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Pieces jointes</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Pièces jointes</p>
             </div>
             <AttachmentsSection target={{ expenseId: expense.id }} readOnly={expense.isLocked && !isSuperadmin} />
           </div>
@@ -207,7 +207,7 @@ export default function ExpenseDetailPage() {
         open={rejecting}
         onClose={() => setRejecting(false)}
         onConfirm={(reason) => rejectMutation.mutate({ id: expense.id, reason }, { onSuccess: () => setRejecting(false) })}
-        title="Refuser cette depense"
+        title="Réfuser cette dépense"
         confirmLabel="Refuser"
         danger
         isLoading={rejectMutation.isPending}
@@ -217,9 +217,9 @@ export default function ExpenseDetailPage() {
         open={cancelling}
         onClose={() => setCancelling(false)}
         onConfirm={(reason) => cancelMutation.mutate({ id: expense.id, reason }, { onSuccess: () => setCancelling(false) })}
-        title="Annuler cette depense validee"
-        description="Le montant reste visible dans l'historique. Le solde du projet sera recalcule."
-        confirmLabel="Annuler la depense"
+        title="Annuler cette dépense validée"
+        description="Le montant reste visible dans l'historique. Le solde du projet sera recalculé."
+        confirmLabel="Annuler la dépense"
         danger
         isLoading={cancelMutation.isPending}
       />
@@ -228,9 +228,9 @@ export default function ExpenseDetailPage() {
         open={deleting}
         onClose={() => setDeleting(false)}
         onConfirm={(reason) => removeMutation.mutate({ id: expense.id, reason }, { onSuccess: () => setDeleting(false) })}
-        title="Supprimer cette depense"
-        description="La depense ne sera jamais effacee physiquement : elle passe en statut Annulee et reste consultable dans l'historique. Le client sera notifie."
-        confirmLabel="Supprimer la depense"
+        title="Supprimer cette dépense"
+        description="La dépense ne sera jamais effacée physiquement : elle passe en statut Annulée et reste consultable dans l'historique. Le client sera notifié."
+        confirmLabel="Supprimer la dépense"
         danger
         isLoading={removeMutation.isPending}
       />
@@ -259,7 +259,7 @@ export default function ExpenseDetailPage() {
         isLoading={createMessageMutation.isPending}
         defaultValues={{
           type: 'MODIFICATION_REQUEST',
-          subject: `Depense "${expense.label}" du ${formatDateTime(expense.date)} - ${formatMoney(expense.total, '')}`,
+          subject: `Dépense "${expense.label}" du ${formatDateTime(expense.date)} - ${formatMoney(expense.total, '')}`,
           relatedEntityType: 'Expense',
           relatedEntityId: expense.id,
         }}
@@ -286,14 +286,14 @@ function PaymentStatusEditor({
   return (
     <div className="mt-3 flex flex-col gap-2 border-t border-concrete-light pt-3 sm:flex-row sm:flex-wrap sm:items-center">
       <Select value={status} onChange={(e) => setStatus(e.target.value as ExpensePaymentStatus)} className="w-full sm:w-44">
-        <option value="PAID_FULL">Paye totalement</option>
+        <option value="PAID_FULL">Payé totalement</option>
         <option value="PARTIAL">Acompte / avance</option>
-        <option value="CREDIT">A credit / differe</option>
+        <option value="CREDIT">A crédit / différé</option>
       </Select>
       {status === 'PARTIAL' && (
         <input
           type="number"
-          placeholder="Montant verse"
+          placeholder="Montant versé"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           className="h-10 w-full rounded-md border border-concrete-dark px-3 text-sm sm:w-40"
@@ -306,7 +306,7 @@ function PaymentStatusEditor({
         onClick={() => onSave(status, status === 'PARTIAL' ? Number(amount) : undefined)}
         className="w-full sm:w-auto"
       >
-        Mettre a jour
+        Mettre à jour
       </Button>
     </div>
   );

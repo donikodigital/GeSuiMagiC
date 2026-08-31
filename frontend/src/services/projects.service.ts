@@ -1,3 +1,7 @@
+// frontend/src/services/projects.service.ts - v1.1
+// Ajout de autoApproveExpenses et expenseApprovalThreshold a
+// CreateProjectPayload, pour les rendre choisissables des la creation.
+
 import { api } from '@/lib/api-client';
 import type { FinancialSummary, PaginatedResponse, Project, ProjectStatus } from '@/types/models';
 
@@ -18,6 +22,8 @@ export interface CreateProjectPayload {
   estimatedCost?: number;
   budget: number;
   currency?: string;
+  autoApproveExpenses?: boolean;
+  expenseApprovalThreshold?: number;
   clientId?: string; // superadmin uniquement
 }
 

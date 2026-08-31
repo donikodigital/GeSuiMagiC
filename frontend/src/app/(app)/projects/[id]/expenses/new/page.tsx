@@ -1,15 +1,10 @@
 // ============================================================================
-// app/(app)/projects/[id]/expenses/new/page.tsx - v2.0
-// - Option "+ Autre" ajoutee sur Categorie ET Materiau/Element : revele un
-//   champ de saisie, cree la categorie/le materiau via catalogService avant
-//   d'enregistrer la depense (necessite le controller backend mis a jour
-//   pour autoriser SUPERVISOR sur ces creations).
-// - "Element personnalise" (deja existant) reste distinct de "+ Autre" :
-//   le premier laisse juste taper un libelle sans toucher au catalogue, le
-//   second cree une vraie entree reutilisable pour les prochaines depenses.
-// - Formulaire redecoupe en sections (meme convention que le formulaire
-//   "Nouveau projet" : plusieurs Card avec un sous-titre h3), icones de
-//   section, callout total plus visuel.
+// app/(app)/projects/[id]/expenses/new/page.tsx - v2.1
+// Reference facture generee automatiquement (7 caracteres, lettres
+// majuscules + chiffres, sans caracteres ambigus 0/O/1/I/L) des le
+// chargement du formulaire, avec un bouton pour en regenerer une autre.
+// Le champ reste librement modifiable si le superviseur veut y mettre la
+// vraie reference du justificatif papier. Reste du fichier inchange.
 // ============================================================================
 
 'use client';
@@ -20,7 +15,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Layers, Calculator, Truck } from 'lucide-react';
+import { AlertTriangle, Layers, Calculator, RefreshCw, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCreateExpense } from '@/hooks/use-expenses';
 import { useCategories, useMaterials, useUnits } from '@/hooks/use-catalog';
@@ -36,13 +31,24 @@ import { RequireRole } from '@/components/shared/require-role';
 
 const NEW_OPTION = '__new__';
 
+// Alphabet sans caracteres ambigus (0/O, 1/I/L) - plus fiable a relire/recopier sur un justificatif papier.
+const REFERENCE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function generateInvoiceReference(length = 7): string {
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += REFERENCE_CHARS.charAt(Math.floor(Math.random() * REFERENCE_CHARS.length));
+  }
+  return result;
+}
+
 const schema = z.object({
-  categoryId: z.string().min(1, 'Selectionnez une categorie'),
+  categoryId: z.string().min(1, 'Selectionnez une catégorie'),
   materialId: z.string().optional(),
-  label: z.string().min(1, 'Le libelle est requis'),
-  quantity: z.coerce.number().positive('La quantite doit etre superieure a 0'),
+  label: z.string().min(1, 'Le libellé est requis'),
+  quantity: z.coerce.number().positive('La quantité doit être superieure à 0'),
   unit: z.string().min(1, "L'unite est requise"),
-  unitPrice: z.coerce.number().positive('Le prix unitaire doit etre superieur a 0'),
+  unitPrice: z.coerce.number().positive('Le prix unitaire doit être supérieur à 0'),
   date: z.string().optional(),
   supplier: z.string().optional(),
   invoiceReference: z.string().optional(),
@@ -74,7 +80,10 @@ function NewExpensePageContent() {
     control,
     setValue,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { paymentStatus: 'PAID_FULL', materialId: NEW_OPTION } });
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { paymentStatus: 'PAID_FULL', materialId: NEW_OPTION, invoiceReference: generateInvoiceReference() },
+  });
 
   const categoryId = useWatch({ control, name: 'categoryId' });
   const materialId = useWatch({ control, name: 'materialId' });
@@ -127,7 +136,7 @@ function NewExpensePageContent() {
       });
       router.push(`/projects/${params.id}/expenses/${expense.id}`);
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "L'enregistrement a echoue.");
+      toast.error(error instanceof ApiError ? error.message : "L'enregistrement a echoué.");
     }
   };
 
@@ -135,7 +144,7 @@ function NewExpensePageContent() {
 
   return (
     <div className="mx-auto max-w-lg">
-      <PageHeader title="Nouvelle depense" description="Le total est toujours recalcule et verifie cote serveur." />
+      <PageHeader title="Nouvelle dépense" description="Le total est toujours recalculé et verifié côté serveur." />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <Card>
@@ -144,10 +153,10 @@ function NewExpensePageContent() {
               <SectionIcon>
                 <Layers className="h-4 w-4" />
               </SectionIcon>
-              <h3 className="font-display text-sm font-semibold text-ink-700">Categorie et materiau</h3>
+              <h3 className="font-display text-sm font-semibold text-ink-700">Catégorie et matériau</h3>
             </div>
 
-            <FormField label="Categorie" htmlFor="categoryId" required error={errors.categoryId?.message}>
+            <FormField label="Catégorie" htmlFor="categoryId" required error={errors.categoryId?.message}>
               <Select
                 id="categoryId"
                 {...register('categoryId')}
@@ -159,7 +168,7 @@ function NewExpensePageContent() {
                 }}
               >
                 <option value="" disabled>
-                  Selectionner une categorie
+                  Selectionner une catégorie
                 </option>
                 {categories?.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -171,10 +180,10 @@ function NewExpensePageContent() {
             </FormField>
 
             {categoryId === NEW_OPTION && (
-              <FormField label="Nom de la nouvelle categorie" htmlFor="newCategoryName" required error={newCategoryInvalid ? 'Ce nom est requis' : undefined}>
+              <FormField label="Nom de la nouvelle catégorie" htmlFor="newCategoryName" required error={newCategoryInvalid ? 'Ce nom est requis' : undefined}>
                 <Input
                   id="newCategoryName"
-                  placeholder="Ex: Etancheite"
+                  placeholder="Ex: Etancheité"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   autoFocus
@@ -182,7 +191,7 @@ function NewExpensePageContent() {
               </FormField>
             )}
 
-            <FormField label="Materiau / element" htmlFor="materialId" hint="Choisis 'Autre' pour ajouter un materiau absent de la liste.">
+            <FormField label="Materiau / élément" htmlFor="materialId" hint="Choisis 'Autre' pour ajouter un matériau absent de la liste.">
               <Select
                 id="materialId"
                 {...register('materialId')}
@@ -206,11 +215,11 @@ function NewExpensePageContent() {
 
             {materialId === NEW_OPTION && (
               <FormField
-                label="Nom du nouveau materiau / element"
+                label="Nom du nouveau matériau / élément"
                 htmlFor="newMaterialName"
                 required
                 error={newMaterialInvalid ? 'Ce nom est requis' : undefined}
-                hint="Sera ajoute au catalogue pour les prochaines depenses."
+                hint="Sera ajouté au catalogue pour les prochaines dépenses."
               >
                 <Input
                   id="newMaterialName"
@@ -225,7 +234,7 @@ function NewExpensePageContent() {
               </FormField>
             )}
 
-            <FormField label="Libelle" htmlFor="label" required error={errors.label?.message}>
+            <FormField label="Libellé" htmlFor="label" required error={errors.label?.message}>
               <Input id="label" placeholder="Ciment 32,5" {...register('label')} />
             </FormField>
           </CardContent>
@@ -237,7 +246,7 @@ function NewExpensePageContent() {
               <SectionIcon>
                 <Calculator className="h-4 w-4" />
               </SectionIcon>
-              <h3 className="font-display text-sm font-semibold text-ink-700">Detail de la depense</h3>
+              <h3 className="font-display text-sm font-semibold text-ink-700">Détail de la dépense</h3>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
@@ -262,14 +271,14 @@ function NewExpensePageContent() {
             </div>
 
             <div className="rounded-xl border border-blueprint-100 bg-blueprint-50/60 px-4 py-3">
-              <p className="text-xs uppercase tracking-wide text-blueprint-600">Total (recalcule par le serveur)</p>
+              <p className="text-xs uppercase tracking-wide text-blueprint-600">Total (recalculé par le serveur)</p>
               <p className="mt-0.5 font-ledger text-2xl font-bold text-ink-900">{formatMoney(total, project?.currency)}</p>
             </div>
 
             {willRequireConfirmation && (
               <div className="flex items-start gap-2 rounded-md border border-safety-200 bg-safety-50 px-3 py-2.5 text-sm text-safety-500">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>Cette depense depasse le seuil configure ({formatMoney(threshold ?? 0, project?.currency)}) : elle restera en attente jusqu&apos;a confirmation du client.</span>
+                <span>Cette dépense dépasse le seuil configuré ({formatMoney(threshold ?? 0, project?.currency)}) : elle restera en attente jusqu&apos;à confirmation du client.</span>
               </div>
             )}
           </CardContent>
@@ -289,24 +298,36 @@ function NewExpensePageContent() {
             </FormField>
 
             <div className="grid grid-cols-2 gap-3">
-              <FormField label="Reference facture" htmlFor="invoiceReference">
-                <Input id="invoiceReference" {...register('invoiceReference')} />
+              <FormField label="Référence facture" htmlFor="invoiceReference" hint="Génerée automatiquement, modifiable si besoin.">
+                <div className="flex gap-1.5">
+                  <Input id="invoiceReference" maxLength={7} className="flex-1 uppercase" {...register('invoiceReference')} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 px-2.5"
+                    title="Générer une nouvelle reference"
+                    onClick={() => setValue('invoiceReference', generateInvoiceReference(), { shouldDirty: true })}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
               </FormField>
               <FormField label="Date" htmlFor="date">
                 <Input id="date" type="date" {...register('date')} />
               </FormField>
             </div>
 
-            <FormField label="Statut de paiement fournisseur" htmlFor="paymentStatus" hint="N'affecte jamais le solde du chantier - suivi du reste a payer uniquement.">
+            <FormField label="Statut de paiement fournisseur" htmlFor="paymentStatus" hint="N'affecte jamais le solde du chantier - suivi du reste à payer uniquement.">
               <Select id="paymentStatus" {...register('paymentStatus')}>
-                <option value="PAID_FULL">Paye totalement</option>
+                <option value="PAID_FULL">Payé totalement</option>
                 <option value="PARTIAL">Acompte / avance</option>
-                <option value="CREDIT">A credit / differe</option>
+                <option value="CREDIT">A crédit / différé</option>
               </Select>
             </FormField>
 
             {paymentStatus === 'PARTIAL' && (
-              <FormField label="Montant deja verse au fournisseur" htmlFor="amountPaidToSupplier" required>
+              <FormField label="Montant déjà versé au fournisseur" htmlFor="amountPaidToSupplier" required>
                 <Input id="amountPaidToSupplier" type="number" {...register('amountPaidToSupplier')} />
               </FormField>
             )}
@@ -326,7 +347,7 @@ function NewExpensePageContent() {
             Annuler
           </Button>
           <Button type="submit" loading={busy} disabled={newCategoryInvalid || newMaterialInvalid}>
-            Enregistrer la depense
+            Enregistrer la dépense
           </Button>
         </div>
       </form>

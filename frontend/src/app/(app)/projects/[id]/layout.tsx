@@ -84,7 +84,7 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
               <StatusBadge label={projectStatusMeta[project.status].label} tone={projectStatusMeta[project.status].tone} />
             </div>
             <p className="mt-1 truncate text-sm text-white/60">
-              {[project.location, project.city, project.country].filter(Boolean).join(', ') || 'Localisation non renseignee'}
+              {[project.location, project.city, project.country].filter(Boolean).join(', ') || 'Localisation non renseignée'}
             </p>
           </div>
 

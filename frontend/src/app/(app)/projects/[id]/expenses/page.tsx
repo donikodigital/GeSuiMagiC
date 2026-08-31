@@ -1,14 +1,9 @@
-// ============================================================================
-// app/(app)/projects/[id]/expenses/page.tsx - v2.0
-// DataTable (source de scroll horizontal, colonnes tronquees sur mobile
-// comme visible sur les captures precedentes des autres listes) remplacee
-// par ExpenseCard, meme pattern que DepositCard/AuditEntryCard. Filtres
-// Statut/Categorie empiles en colonne sur mobile au lieu de deborder.
-// Modale de detail : Field passe de flex justify-between (une ligne, sujet
-// a deborder) a un layout empile (label au-dessus, valeur en dessous,
-// break-words) - meme correction que sur la modale d'audit. Aucun
-// changement de logique (memes hooks, memes mutations).
-// ============================================================================
+// frontend/src/app/(app)/projects/[id]/expenses/page.tsx - v2.1
+// Meme harmonisation que la page depots : "Valider la depense" en pleine
+// largeur au-dessus, boutons secondaires (Refuser / Voir le detail complet
+// / Fermer) en grille adaptative en dessous. Pour un client sur une
+// depense PENDING, jusqu'a 3 boutons secondaires s'affichent (Refuser +
+// Voir le detail complet + Fermer) - la grille passe alors en 3 colonnes.
 
 'use client';
 
@@ -29,6 +24,8 @@ import { PageSpinner, ErrorState, EmptyState } from '@/components/ui/misc';
 import { expenseStatusMeta, formatDate, formatMoney } from '@/lib/format';
 import type { Expense, ExpenseStatus } from '@/types/models';
 
+const GRID_COLS_CLASS: Record<number, string> = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3' };
+
 export default function ProjectExpensesPage() {
   const params = useParams<{ id: string }>();
   const { isClient, isSuperadmin, isSupervisor } = useAuth();
@@ -44,6 +41,9 @@ export default function ProjectExpensesPage() {
   const { data: categories } = useCategories();
   const approveMutation = useApproveExpense(params.id);
   const rejectMutation = useRejectExpense(params.id);
+
+  const canApprove = !!detailTarget && isClient && detailTarget.status === 'PENDING';
+  const canViewFull = isClient || isSuperadmin;
 
   return (
     <div>
@@ -153,35 +153,64 @@ export default function ProjectExpensesPage() {
             <Field label="Statut" value={expenseStatusMeta[detailTarget.status].label} />
           </dl>
 
-          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-concrete pt-4">
-            {isClient && detailTarget.status === 'PENDING' && (
-              <>
-                <Button
-                  onClick={() => approveMutation.mutate(detailTarget.id, { onSuccess: () => setDetailTarget(null) })}
-                  loading={approveMutation.isPending}
-                >
-                  <Check className="h-4 w-4" /> Valider la depense
+          {(() => {
+            const secondary: { key: string; node: React.ReactNode }[] = [];
+            if (canApprove) {
+              secondary.push({
+                key: 'reject',
+                node: (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setRejectTarget(detailTarget);
+                      setDetailTarget(null);
+                    }}
+                  >
+                    <X className="h-4 w-4" /> Refuser
+                  </Button>
+                ),
+              });
+            }
+            if (canViewFull) {
+              secondary.push({
+                key: 'full',
+                node: (
+                  <Link href={`/projects/${params.id}/expenses/${detailTarget.id}`} className="w-full">
+                    <Button variant="outline" className="w-full">
+                      Voir le detail complet
+                    </Button>
+                  </Link>
+                ),
+              });
+            }
+            secondary.push({
+              key: 'close',
+              node: (
+                <Button variant="outline" onClick={() => setDetailTarget(null)}>
+                  Fermer
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setRejectTarget(detailTarget);
-                    setDetailTarget(null);
-                  }}
-                >
-                  <X className="h-4 w-4" /> Refuser
-                </Button>
-              </>
-            )}
-            {(isClient || isSuperadmin) && (
-              <Link href={`/projects/${params.id}/expenses/${detailTarget.id}`}>
-                <Button variant="outline">Voir le detail complet</Button>
-              </Link>
-            )}
-            <Button variant="outline" onClick={() => setDetailTarget(null)}>
-              Fermer
-            </Button>
-          </div>
+              ),
+            });
+
+            return (
+              <div className="mt-5 space-y-2 border-t border-concrete pt-4">
+                {canApprove && (
+                  <Button
+                    className="w-full"
+                    onClick={() => approveMutation.mutate(detailTarget.id, { onSuccess: () => setDetailTarget(null) })}
+                    loading={approveMutation.isPending}
+                  >
+                    <Check className="h-4 w-4" /> Valider la dépense
+                  </Button>
+                )}
+                <div className={`grid gap-2 ${GRID_COLS_CLASS[secondary.length] ?? 'grid-cols-1'}`}>
+                  {secondary.map((s) => (
+                    <React.Fragment key={s.key}>{s.node}</React.Fragment>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </Dialog>
       )}
     </div>

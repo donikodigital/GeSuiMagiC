@@ -1,7 +1,9 @@
-// backend/src/materials/materials.controller.ts - v1.2
-// Ajout de CLIENT sur create(), meme raisonnement que categories.controller.ts.
+// backend/src/materials/materials.controller.ts - v1.3
+// Ajout de remove() (DELETE :id), reserve au superadmin : suppression
+// definitive autorisee uniquement si aucune depense ne reference ce
+// materiau. Reste inchange.
 
-import { Body, Controller, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -46,6 +48,24 @@ export class MaterialsService {
     await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'Material', entityId: id, newValue: { isActive } });
     return updated;
   }
+
+  /** Suppression definitive : uniquement si aucune depense ne reference ce materiau. */
+  async remove(id: string, actor: AuthenticatedUser) {
+    const existing = await this.prisma.material.findUnique({ where: { id } });
+    if (!existing) throw AppException.notFound('Materiau');
+
+    const expensesCount = await this.prisma.expense.count({ where: { materialId: id } });
+    if (expensesCount > 0) {
+      throw AppException.conflict(
+        'MATERIAL_IN_USE',
+        `Ce materiau est utilise dans ${expensesCount} depense(s) et ne peut pas etre supprime. Desactivez-le plutot pour le retirer des nouvelles saisies.`,
+      );
+    }
+
+    await this.prisma.material.delete({ where: { id } });
+    await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'DELETE_SOFT', entityType: 'Material', entityId: id, oldValue: existing });
+    return { removed: true };
+  }
 }
 
 @Controller('materials')
@@ -79,5 +99,11 @@ export class MaterialsController {
   @Roles(UserRole.SUPERADMIN)
   async reactivate(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.materialsService.setActive(id, true, actor);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPERADMIN)
+  async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.materialsService.remove(id, actor);
   }
 }

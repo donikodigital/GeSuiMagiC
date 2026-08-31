@@ -29,7 +29,7 @@ function ClientsPageContent() {
     <div>
       <PageHeader
         title="Clients"
-        description="Proprietaires de chantiers geres sur la plateforme."
+        description="Proprietaires de chantiers gerés sur la plateforme."
         actions={
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" /> Nouveau client
@@ -57,7 +57,7 @@ function ClientsPageContent() {
       ) : isLoading ? (
         <PageSpinner />
       ) : (data?.items.length ?? 0) === 0 ? (
-        <EmptyState title="Aucun client" description="Creez le premier client pour commencer." />
+        <EmptyState title="Aucun client" description="Créez le premier client pour commencer." />
       ) : (
         <>
           <div className="space-y-3">

@@ -18,16 +18,16 @@ export default function ProjectDocumentsPage() {
         </span>
         <div>
           <CardTitle>Documents du projet</CardTitle>
-          <CardDescription>Devis, plans, contrats et documents administratifs generaux (hors justificatifs de depenses/depots).</CardDescription>
+          <CardDescription>Devis, plans, contrats et documents administratifs généraux (hors justificatifs de dépenses/dépôts).</CardDescription>
         </div>
       </CardHeader>
       <CardContent>
         <AttachmentsSection
           target={{ projectId: params.id }}
           kindOptions={[
-            { value: 'document', label: 'Document administratif' },
-            { value: 'facture', label: 'Devis / Contrat' },
-            { value: 'photo', label: 'Photo du chantier' },
+            { value: 'document', label: 'Documents administratifs' },
+            { value: 'facture', label: 'Dévis / Contrats' },
+            { value: 'photo', label: 'Photos du chantier' },
           ]}
         />
       </CardContent>

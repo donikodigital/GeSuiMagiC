@@ -1,23 +1,9 @@
-// ============================================================================
-// app/(app)/projects/new/page.tsx - v2.0
-// Refonte visuelle complete du formulaire de creation de projet, aucun
-// changement de logique/validation (meme schema zod, memes champs envoyes
-// a useCreateProject).
-//
-// - 4 cartes distinctes au lieu de 3, chacune avec icone + sous-titre
-//   (Informations generales / Localisation / Planning / Budget) pour une
-//   meilleure lecture du formulaire, qui etait plat et peu guide.
-// - Regroupement de "Cout estimatif" + "Devise" + "Budget alloue" dans une
-//   carte Budget dediee et visuellement distincte (fond blueprint clair),
-//   plus coherente qu'eparpilles entre "Planning et budget".
-// - Grilles 2 colonnes forcees remplacees par grid-cols-1 sm:grid-cols-2 -
-//   les champs ne s'ecrasaient plus des mobile mais restaient sur 2
-//   colonnes fixes, ce qui tronquait les labels longs sur petit ecran.
-// - Suffixes visuels (m², devise) sur Superficie et Budget alloue pour
-//   clarifier l'unite sans alourdir le label.
-// - Barre d'actions (Annuler / Creer) en sticky bottom sur mobile, pour
-//   rester accessible sans avoir a rescroller tout le formulaire.
-// ============================================================================
+// frontend/src/app/(app)/projects/new/page.tsx - v2.1
+// Ajout d'une carte "Validation des depenses" : le client choisit son
+// autoApproveExpenses et son expenseApprovalThreshold des la creation, au
+// lieu de subir silencieusement le defaut Prisma (5 000 000). Ce defaut ne
+// s'applique plus que si le champ est laisse vide (garde-fou technique
+// pour la colonne NOT NULL en base, plus une valeur figee).
 
 'use client';
 
@@ -26,7 +12,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, CalendarRange, MapPin, Wallet } from 'lucide-react';
+import { Building2, CalendarRange, MapPin, ShieldCheck, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,13 +38,15 @@ const schema = z.object({
   estimatedCost: z.coerce.number().positive().optional().or(z.literal('')),
   budget: z.coerce.number().positive('Le budget doit etre superieur a 0'),
   currency: z.string().default('GNF'),
+  autoApproveExpenses: z.boolean().default(true),
+  expenseApprovalThreshold: z.coerce.number().positive().optional().or(z.literal('')),
   clientId: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
 function SectionIcon({ icon: Icon }: { icon: React.ComponentType<{ className?: string }> }) {
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600">
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600">
       <Icon className="h-4 w-4" />
     </span>
   );
@@ -80,9 +68,10 @@ function NewProjectPageContent() {
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { currency: 'GNF' } });
+  } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { currency: 'GNF', autoApproveExpenses: true } });
 
   const currency = watch('currency');
+  const autoApproveExpenses = watch('autoApproveExpenses');
 
   const onSubmit = async (values: FormValues) => {
     const project = await createProject.mutateAsync({
@@ -91,6 +80,7 @@ function NewProjectPageContent() {
       roomCount: values.roomCount === '' ? undefined : Number(values.roomCount),
       estimatedCost: values.estimatedCost === '' ? undefined : Number(values.estimatedCost),
       budget: Number(values.budget),
+      expenseApprovalThreshold: values.expenseApprovalThreshold === '' ? undefined : Number(values.expenseApprovalThreshold),
     });
     router.push(`/projects/${project.id}`);
   };
@@ -233,6 +223,55 @@ function NewProjectPageContent() {
                   {...register('budget')}
                 />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-blueprint-600">
+                  {currency || 'GNF'}
+                </span>
+              </div>
+            </FormField>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="items-start gap-3">
+            <SectionIcon icon={ShieldCheck} />
+            <div>
+              <CardTitle>Validation des depenses</CardTitle>
+              <CardDescription>Comment les depenses du superviseur seront validees sur ce chantier.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex cursor-pointer items-start gap-3 rounded-card border border-concrete bg-paper/60 p-4">
+              <input
+                type="checkbox"
+                {...register('autoApproveExpenses')}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-concrete-dark text-blueprint-600 focus:ring-blueprint-400"
+              />
+              <span>
+                <span className="block text-sm font-medium text-ink-800">Validation automatique en dessous du seuil</span>
+                <span className="mt-0.5 block text-xs text-ink-500">
+                  Si desactive, chaque depense necessitera votre confirmation, quel que soit son montant.
+                </span>
+              </span>
+            </label>
+
+            <FormField
+              label="Seuil de confirmation client"
+              htmlFor="expenseApprovalThreshold"
+              hint={
+                autoApproveExpenses
+                  ? "Au-dela de ce montant, une depense necessitera votre confirmation. Laisse vide, une valeur de securite s'applique."
+                  : 'Ce seuil est ignore tant que la validation automatique est desactivee.'
+              }
+            >
+              <div className="relative">
+                <Input
+                  id="expenseApprovalThreshold"
+                  type="number"
+                  placeholder="5000000"
+                  disabled={!autoApproveExpenses}
+                  className="pr-16"
+                  {...register('expenseApprovalThreshold')}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-ink-400">
                   {currency || 'GNF'}
                 </span>
               </div>

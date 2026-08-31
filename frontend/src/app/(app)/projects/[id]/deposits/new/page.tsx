@@ -17,8 +17,8 @@ import { paymentMethodLabels } from '@/lib/format';
 import { RequireRole } from '@/components/shared/require-role';
 
 const schema = z.object({
-  supervisorId: z.string().min(1, 'Selectionnez un superviseur beneficiaire'),
-  amount: z.coerce.number().positive('Le montant doit etre superieur a 0'),
+  supervisorId: z.string().min(1, 'Selectionnez un superviseur bénéficiaire'),
+  amount: z.coerce.number().positive('Le montant doit être superieur à 0'),
   date: z.string().optional(),
   motif: z.string().optional(),
   paymentMethod: z.enum(['CASH', 'BANK_TRANSFER', 'MOBILE_MONEY', 'CHECK', 'OTHER']),
@@ -62,19 +62,19 @@ function NewDepositPageContent() {
 
   return (
     <div className="mx-auto max-w-lg pb-4">
-      <PageHeader title="Nouveau depot" description="Le superviseur beneficiaire devra valider ce depot avant qu'il n'alimente le solde." />
+      <PageHeader title="Nouveau dépôt" description="Le superviseur bénéficiaire devra valider ce dépôt avant qu'il n'alimente le solde." />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <Card className="border-blueprint-200 bg-blueprint-50/40">
           <CardHeader className="items-start gap-3 border-blueprint-200">
             <SectionIcon icon={HandCoins} />
             <div>
-              <CardTitle>Beneficiaire et montant</CardTitle>
-              <CardDescription>Le depot alimentera le solde une fois valide par le superviseur.</CardDescription>
+              <CardTitle>Bénéficiaire et montant</CardTitle>
+              <CardDescription>Le dépôt alimentera le solde une fois validé par le superviseur.</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <FormField label="Superviseur beneficiaire" htmlFor="supervisorId" required error={errors.supervisorId?.message}>
+            <FormField label="Superviseur bénéficiaire" htmlFor="supervisorId" required error={errors.supervisorId?.message}>
               <Select id="supervisorId" {...register('supervisorId')} defaultValue="">
                 <option value="" disabled>
                   Selectionner un superviseur
@@ -86,7 +86,7 @@ function NewDepositPageContent() {
                 ))}
               </Select>
               {supervisorsQuery.data?.length === 0 && (
-                <p className="mt-1 text-xs text-safety-500">Aucun superviseur n&apos;est encore affecte a ce projet.</p>
+                <p className="mt-1 text-xs text-safety-500">Aucun superviseur n&apos;est encore affecté à ce projet.</p>
               )}
             </FormField>
 
@@ -106,8 +106,8 @@ function NewDepositPageContent() {
           <CardHeader className="items-start gap-3">
             <SectionIcon icon={CalendarRange} />
             <div>
-              <CardTitle>Details du versement</CardTitle>
-              <CardDescription>Date, mode et references utiles au suivi.</CardDescription>
+              <CardTitle>Détails du versement</CardTitle>
+              <CardDescription>Date, mode et références utiles au suivi.</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -146,7 +146,7 @@ function NewDepositPageContent() {
               Annuler
             </Button>
             <Button type="submit" loading={createDeposit.isPending}>
-              Enregistrer le depot
+              Enregistrer le dépôt
             </Button>
           </div>
         </div>
