@@ -37,7 +37,7 @@ export class DepositsService {
       where: { projectId, supervisorId: dto.supervisorId, status: 'ACTIVE' },
     });
     if (!assignment) {
-      throw AppException.badRequest('SUPERVISOR_NOT_ASSIGNED', "Ce superviseur n'est pas affecte a ce projet.");
+      throw AppException.badRequest('SUPERVISOR_NOT_ASSIGNED', "Ce superviseur n'est pas affecté à ce projet.");
     }
 
     const deposit = await this.prisma.deposit.create({
@@ -70,15 +70,15 @@ export class DepositsService {
     await this.notifications.send({
       userId: supervisor.userId,
       type: 'DEPOSIT_CREATED',
-      title: 'Nouveau depot a valider',
-      message: `Un depot de ${formatMoney(dto.amount, deposit.currency)} a ete enregistre pour le projet.`,
+      title: 'Nouveau dépôt à valider',
+      message: `Un depot de ${formatMoney(dto.amount, deposit.currency)} a été enregistré pour le projet.`,
       emailHtml: emailTemplates.depositCreated(
         supervisor.firstName,
         project.name,
         formatMoney(dto.amount, deposit.currency),
         `${this.config.get<string>('frontendUrl')}/projects/${projectId}/deposits/${deposit.id}`,
       ),
-      emailSubject: 'Nouveau depot a valider',
+      emailSubject: 'Nouveau dépôt à valider',
     });
 
     return deposit;
@@ -116,7 +116,7 @@ export class DepositsService {
       where: { id },
       include: { supervisor: true, client: true, project: { select: { id: true, name: true, currency: true } }, attachments: true },
     });
-    if (!deposit) throw AppException.notFound('Depot');
+    if (!deposit) throw AppException.notFound('Dépôt');
     return deposit;
   }
 
@@ -135,7 +135,7 @@ export class DepositsService {
       throw AppException.forbiddenProjectAccess();
     }
     if (deposit.status !== 'PENDING') {
-      throw AppException.conflict('DEPOSIT_NOT_PENDING', 'Ce depot a deja ete traite.');
+      throw AppException.conflict('DEPOSIT_NOT_PENDING', 'Ce dépôt a déjà été traîté.');
     }
 
     await this.prisma.runInTransaction(async (tx) => {
@@ -156,10 +156,10 @@ export class DepositsService {
     await this.notifications.send({
       userId: client.userId,
       type: 'DEPOSIT_APPROVED',
-      title: 'Depot valide',
-      message: `Votre depot de ${formatMoney(deposit.amount, deposit.currency)} a ete valide.`,
+      title: 'Dépôt validé',
+      message: `Votre dépôt de ${formatMoney(deposit.amount, deposit.currency)} a été validé.`,
       emailHtml: emailTemplates.depositApproved(client.firstName, project.name, formatMoney(deposit.amount, deposit.currency), `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`),
-      emailSubject: 'Depot valide',
+      emailSubject: 'Dépôt validé',
     });
 
     return this.getRaw(id);
@@ -172,7 +172,7 @@ export class DepositsService {
       throw AppException.forbiddenProjectAccess();
     }
     if (deposit.status !== 'PENDING') {
-      throw AppException.conflict('DEPOSIT_NOT_PENDING', 'Ce depot a deja ete traite.');
+      throw AppException.conflict('DEPOSIT_NOT_PENDING', 'Ce dépôt a déjà été traîté');
     }
 
     await this.prisma.deposit.update({
@@ -197,9 +197,9 @@ export class DepositsService {
       userId: client.userId,
       type: 'DEPOSIT_REJECTED',
       title: 'Depot refuse',
-      message: `Votre depot de ${formatMoney(deposit.amount, deposit.currency)} a ete refuse : ${reason}`,
+      message: `Votre dépôt de ${formatMoney(deposit.amount, deposit.currency)} a été refusé : ${reason}`,
       emailHtml: emailTemplates.depositRejected(client.firstName, project.name, formatMoney(deposit.amount, deposit.currency), reason, `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`),
-      emailSubject: 'Depot refuse',
+      emailSubject: 'Dépôt refusé',
     });
 
     return this.getRaw(id);
@@ -224,8 +224,8 @@ export class DepositsService {
     await this.notifications.send({
       userId: client.userId,
       type: 'ADMIN_CORRECTION',
-      title: 'Correction administrative sur un depot',
-      message: `Le montant d'un depot a ete corrige de ${formatMoney(oldAmount, deposit.currency)} a ${formatMoney(newAmount, deposit.currency)}.`,
+      title: 'Correction administrative sur un dépôt',
+      message: `Le montant d'un dépôt a été corrigé de ${formatMoney(oldAmount, deposit.currency)} a ${formatMoney(newAmount, deposit.currency)}.`,
       emailHtml: emailTemplates.adminCorrection(client.firstName, 'Deposit', formatMoney(oldAmount, deposit.currency), formatMoney(newAmount, deposit.currency), reason, `${this.config.get<string>('frontendUrl')}/projects/${deposit.projectId}`),
       emailSubject: 'Correction administrative',
     });
@@ -243,7 +243,7 @@ export class DepositsService {
     if (dto.date !== undefined) changedFieldLabels.push('Date');
     if (dto.motif !== undefined) changedFieldLabels.push('Motif');
     if (dto.paymentMethod !== undefined) changedFieldLabels.push('Mode de versement');
-    if (dto.reference !== undefined) changedFieldLabels.push('Reference');
+    if (dto.reference !== undefined) changedFieldLabels.push('Référence');
     if (dto.observation !== undefined) changedFieldLabels.push('Observation');
 
     await this.prisma.runInTransaction(async (tx) => {
@@ -261,7 +261,7 @@ export class DepositsService {
 
       if (amountChanged) {
         await tx.financialCorrection.create({
-          data: { entityType: 'Deposit', entityId: id, oldValue: existing.amount, newValue: dto.amount!, reason: 'Modification administrative (edition multi-champs)', correctedById: actor.userId },
+          data: { entityType: 'Deposit', entityId: id, oldValue: existing.amount, newValue: dto.amount!, reason: 'Modification administrative (édition multi-champs)', correctedById: actor.userId },
         });
         if (existing.status === 'APPROVED') await this.wallets.recompute(existing.projectId, tx);
       }
@@ -277,8 +277,8 @@ export class DepositsService {
       await this.notifications.send({
         userId: client.userId,
         type: 'ADMIN_CORRECTION',
-        title: 'Modification administrative sur un depot',
-        message: `Champs modifies : ${changedFieldLabels.join(', ')}.`,
+        title: 'Modification administrative sur un dépôt',
+        message: `Champs modifiés : ${changedFieldLabels.join(', ')}.`,
         emailHtml: emailTemplates.adminFieldUpdate(client.firstName, 'Deposit', changedFieldLabels.join(', '), `${this.config.get<string>('frontendUrl')}/projects/${existing.projectId}`),
         emailSubject: 'Modification administrative',
       });
@@ -291,7 +291,7 @@ export class DepositsService {
   async remove(id: string, reason: string, actor: AuthenticatedUser) {
     const existing = await this.prisma.deposit.findUniqueOrThrow({ where: { id } });
     if (existing.status === 'CANCELLED') {
-      throw AppException.conflict('DEPOSIT_ALREADY_CANCELLED', 'Ce depot est deja annule.');
+      throw AppException.conflict('DEPOSIT_ALREADY_CANCELLED', 'Ce dépôt est déjà annulé.');
     }
 
     await this.prisma.runInTransaction(async (tx) => {
@@ -308,8 +308,8 @@ export class DepositsService {
     await this.notifications.send({
       userId: client.userId,
       type: 'ADMIN_CORRECTION',
-      title: 'Depot supprime',
-      message: `Un depot de ${formatMoney(existing.amount, existing.currency)} a ete supprime par le superadministrateur : ${reason}`,
+      title: 'Dépôt supprimé',
+      message: `Un dépôt de ${formatMoney(existing.amount, existing.currency)} a été supprimé par le superadministrateur : ${reason}`,
     });
 
     return this.getRaw(id);

@@ -47,7 +47,7 @@ export function SupervisorDashboard() {
   if (isError) return <ErrorState message="Impossible de charger vos projets." />;
 
   if (projects.length === 0) {
-    return <EmptyState title="Aucun chantier affecte" description="Le client n'a pas encore affecte de projet a votre compte." />;
+    return <EmptyState title="Aucun chantier affecté" description="Le client n'a pas encore affecté de projet à votre compte." />;
   }
 
   const activeCount = projects.filter((p) => p.status === 'ACTIVE').length;
@@ -59,11 +59,11 @@ export function SupervisorDashboard() {
     <div className="mx-auto max-w-7xl space-y-8">
       <DashboardHero
         eyebrow="Tableau de bord · Superviseur"
-        title="Vos chantiers affectes"
+        title="Vos chantiers affectés"
         subtitle={
           projects.length > 1
-            ? 'Selectionnez un chantier pour voir son solde en detail.'
-            : "Enregistrez les depenses au fil de l'avancement des travaux."
+            ? 'Selectionnez un chantier pour voir son solde en détail.'
+            : "Enregistrez les dépenses au fil de l'avancement des travaux."
         }
         primaryLabel="Solde disponible"
         primaryValue={formatMoney(balance, currency)}
@@ -76,7 +76,7 @@ export function SupervisorDashboard() {
           onSelect: setSelectedProjectId,
         }}
         stats={[
-          { label: 'Chantiers affectes', value: String(projects.length) },
+          { label: 'Chantiers affectés', value: String(projects.length) },
           { label: 'Chantiers actifs', value: String(activeCount), tone: 'positive' },
         ]}
       />
@@ -123,7 +123,7 @@ export function SupervisorDashboard() {
                       <div className="min-w-0">
                         <p className="truncate font-display text-base font-semibold text-ink-900">{project.name}</p>
                         <p className="truncate text-xs text-ink-400">
-                          {[project.location, project.city].filter(Boolean).join(', ') || 'Localisation non renseignee'}
+                          {[project.location, project.city].filter(Boolean).join(', ') || 'Localisation non renseignée'}
                         </p>
                       </div>
                     </div>
@@ -163,7 +163,7 @@ export function SupervisorDashboard() {
       )}
 
       {showPendingList && (
-        <Dialog open onClose={() => setShowPendingList(false)} title="Depots en attente" description="Selectionnez un depot pour le valider ou le refuser.">
+        <Dialog open onClose={() => setShowPendingList(false)} title="Dépôts en attente" description="Selectionnez un dépôt pour le valider ou le refuser.">
           <div className="space-y-3">
             {pending.items.map((d) => (
               <DepositCard

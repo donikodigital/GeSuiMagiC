@@ -70,7 +70,7 @@ export class NotificationsService {
       if (!user) return;
 
       if (!this.transporter) {
-        this.logger.warn(`SMTP_USER/SMTP_PASSWORD absents - email non envoye (type=${input.type}, to=${user.email})`);
+        this.logger.warn(`SMTP_USER/SMTP_PASSWORD absents - email non envoyé (type=${input.type}, to=${user.email})`);
         return;
       }
 

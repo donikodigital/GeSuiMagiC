@@ -62,7 +62,7 @@ export function SuperadminDashboard() {
         eyebrow="Tableau de bord · Superadministrateur"
         title="Vue d'ensemble de la plateforme"
         subtitle="Volume, clients et projets sur l'ensemble des chantiers."
-        primaryLabel="Volume total verse"
+        primaryLabel="Volume total versé"
         primaryValue={formatMoney(totalVolume, currency)}
         maskable
         stats={[
@@ -155,7 +155,7 @@ export function SuperadminDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between border-t border-concrete px-4 py-2.5 text-sm font-medium text-blueprint-600 transition-colors group-hover:bg-blueprint-50/60">
-                    Voir le detail
+                    Voir le détail
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>

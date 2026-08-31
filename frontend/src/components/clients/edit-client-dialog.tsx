@@ -59,7 +59,7 @@ export function EditClientDialog({ open, onClose, client }: { open: boolean; onC
       toast.success('Client mis a jour.');
       onClose();
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de mettre a jour ce client.'),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de mettre à jour ce client.'),
   });
 
   return (

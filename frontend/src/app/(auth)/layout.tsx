@@ -23,7 +23,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             Chaque franc versé, chaque sac de ciment acheté — un registre que personne ne peut effacer.
           </p>
           <p className="mt-4 text-sm text-ink-300">
-            Portefeuille financier independant par chantier. Historique inviolable. Solde toujours a jour.
+            Portefeuille financier indépendant par chantier. Historique inviolable. Solde toujours à jour.
           </p>
         </div>
         <p className="relative text-xs text-ink-400">© {new Date().getFullYear()} Suivi de Chantier</p>

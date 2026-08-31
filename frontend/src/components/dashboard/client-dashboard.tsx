@@ -54,7 +54,7 @@ export function ClientDashboard() {
         title="Vos chantiers en un coup d'oeil"
         subtitle={
           projects.length > 1
-            ? 'Selectionnez un chantier pour voir son solde en detail.'
+            ? 'Selectionnez un chantier pour voir son solde en détail.'
             : 'Solde disponible pour ce chantier.'
         }
         primaryLabel="Solde disponible"
@@ -75,8 +75,8 @@ export function ClientDashboard() {
           selectedProject
             ? [
                 { label: 'Budget', value: formatMoney(selectedProject.budget, currency) },
-                { label: 'Total verse', value: formatMoney(selectedProject.wallet?.totalDeposited ?? '0', currency), tone: 'positive' },
-                { label: 'Total depense', value: formatMoney(selectedProject.wallet?.totalSpent ?? '0', currency) },
+                { label: 'Total versé', value: formatMoney(selectedProject.wallet?.totalDeposited ?? '0', currency), tone: 'positive' },
+                { label: 'Total depensé', value: formatMoney(selectedProject.wallet?.totalSpent ?? '0', currency) },
               ]
             : []
         }
@@ -89,11 +89,11 @@ export function ClientDashboard() {
         {projects.length === 0 ? (
           <EmptyState
             title="Aucun chantier pour le moment"
-            description="Creez votre premier projet pour commencer a suivre son financement."
+            description="Créez votre premier projet pour commencer à suivre son financement."
             action={
               <Link href="/projects/new">
                 <Button size="sm">
-                  <Plus className="h-4 w-4" /> Creer un projet
+                  <Plus className="h-4 w-4" /> Créer un projet
                 </Button>
               </Link>
             }
@@ -120,7 +120,7 @@ export function ClientDashboard() {
                           <div className="min-w-0">
                             <p className="truncate font-display text-base font-semibold text-ink-900">{project.name}</p>
                             <p className="truncate text-xs text-ink-400">
-                              {[project.city, project.country].filter(Boolean).join(', ') || 'Localisation non renseignee'}
+                              {[project.city, project.country].filter(Boolean).join(', ') || 'Localisation non renseignée'}
                             </p>
                           </div>
                         </div>
@@ -129,7 +129,7 @@ export function ClientDashboard() {
 
                       <div>
                         <div className="mb-1.5 flex items-center justify-between text-xs text-ink-500">
-                          <span>Depense</span>
+                          <span>Dépense</span>
                           <span className="font-medium">{usedPct.toFixed(0)}% du budget</span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-concrete-light">
@@ -149,7 +149,7 @@ export function ClientDashboard() {
                     </CardContent>
 
                     <div className="flex items-center justify-between border-t border-concrete px-5 py-3 text-sm font-medium text-blueprint-600 transition-colors group-hover:bg-blueprint-50/60">
-                      Voir le detail
+                      Voir le détail
                       <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                     </div>
                   </Card>

@@ -31,23 +31,23 @@ export function CategoryDetailDialog({ open, onClose, category }: { open: boolea
     }
   }, [open, category]);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['categories'] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['catégories'] });
 
   const updateMutation = useMutation({
     mutationFn: () => catalogService.categories.update(category.id, { name, group: group || undefined }),
     onSuccess: () => {
       invalidate();
-      toast.success('Categorie mise a jour.');
+      toast.success('Categorie mise à jour.');
       setIsEditing(false);
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Mise a jour impossible.'),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Mise à jour impossible.'),
   });
 
   const toggleMutation = useMutation({
     mutationFn: () => (category.isActive ? catalogService.categories.deactivate(category.id) : catalogService.categories.reactivate(category.id)),
     onSuccess: () => {
       invalidate();
-      toast.success(category.isActive ? 'Categorie desactivee.' : 'Categorie reactivee.');
+      toast.success(category.isActive ? 'Categorie desactivée.' : 'Categorie reactivée.');
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de modifier le statut.'),
   });
@@ -56,10 +56,10 @@ export function CategoryDetailDialog({ open, onClose, category }: { open: boolea
     mutationFn: () => catalogService.categories.remove(category.id),
     onSuccess: () => {
       invalidate();
-      toast.success('Categorie supprimee.');
+      toast.success('Categorie supprimée.');
       onClose();
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de supprimer cette categorie.'),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de supprimer cette catégorie.'),
   });
 
   if (isEditing) {
@@ -99,7 +99,7 @@ export function CategoryDetailDialog({ open, onClose, category }: { open: boolea
         </div>
       ) : confirmingDelete ? (
         <div className="rounded-card border border-clay-200 bg-clay-50 p-4">
-          <p className="text-sm text-clay-600">Confirmer la suppression definitive de cette categorie ? Cette action est irreversible.</p>
+          <p className="text-sm text-clay-600">Confirmer la suppression definitive de cette catégorie ? Cette action est irreversible.</p>
           <div className="mt-3 flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setConfirmingDelete(false)}>
               Annuler

@@ -36,14 +36,14 @@ export class AttachmentsService {
 
   async create(dto: CreateAttachmentDto, actor: AuthenticatedUser) {
     if (!ALLOWED_MIME_TYPES.includes(dto.mimeType)) {
-      throw AppException.badRequest('UNSUPPORTED_FILE_TYPE', 'Formats acceptes : JPG, JPEG, PNG, PDF.');
+      throw AppException.badRequest('UNSUPPORTED_FILE_TYPE', 'Formats acceptés : JPG, JPEG, PNG, PDF.');
     }
     const maxBytes = this.config.get<number>('storage.maxFileSizeMb')! * 1024 * 1024;
     if (dto.fileSizeBytes > maxBytes) {
-      throw AppException.badRequest('FILE_TOO_LARGE', `Le fichier depasse la taille maximale autorisee (${this.config.get('storage.maxFileSizeMb')} Mo).`);
+      throw AppException.badRequest('FILE_TOO_LARGE', `Le fichier dépasse la taille maximale autorisée (${this.config.get('storage.maxFileSizeMb')} Mo).`);
     }
     if (!dto.projectId && !dto.depositId && !dto.expenseId) {
-      throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un justificatif doit etre rattache a un projet, un depot ou une depense.');
+      throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un justificatif doit être rattaché à un projet, un dépôt ou une dépense.');
     }
 
     // Meme isolation que la lecture : on ne peut attacher un fichier qu'a une cible que l'on peut soi-meme consulter.
@@ -85,12 +85,12 @@ export class AttachmentsService {
       where: { id },
       include: { deposit: true, expense: true },
     });
-    if (!attachment) throw AppException.notFound('Piece jointe');
+    if (!attachment) throw AppException.notFound('Pièce jointe');
 
     // Un justificatif rattache a une operation verrouillee ne peut plus etre retire (integrite de l'audit).
     if (attachment.deposit?.isLocked || attachment.expense?.isLocked) {
       if (actor.role !== 'SUPERADMIN') {
-        throw AppException.locked('Cette piece jointe');
+        throw AppException.locked('Cette pièce jointe');
       }
     }
 
@@ -132,7 +132,7 @@ export class AttachmentsService {
       projectId = expense?.projectId;
     }
     if (!projectId) {
-      throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un projet, un depot ou une depense valide est requis.');
+      throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un projet, un dépôt ou une dépense valide est requis.');
     }
 
     const project = await this.prisma.project.findUnique({

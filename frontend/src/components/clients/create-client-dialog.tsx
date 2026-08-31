@@ -46,16 +46,16 @@ export function CreateClientDialog({ open, onClose, onCreated }: { open: boolean
     mutationFn: (values: FormValues) => clientsService.create(values),
     onSuccess: (client) => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-      toast.success('Client cree - une invitation par email vient de lui etre envoyee.');
+      toast.success('Client crée - une invitation par email vient de lui être envoyée.');
       reset();
       onClose();
       onCreated(client.id);
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de creer ce client.'),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de créer ce client.'),
   });
 
   return (
-    <Dialog open={open} onClose={onClose} title="Nouveau client" description="Un email d'invitation securise lui sera envoye automatiquement.">
+    <Dialog open={open} onClose={onClose} title="Nouveau client" description="Un email d'invitation securisé lui sera envoyé automatiquement.">
       <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FormField label="Prenom" htmlFor="firstName" required error={errors.firstName?.message}>
@@ -71,7 +71,7 @@ export function CreateClientDialog({ open, onClose, onCreated }: { open: boolean
         </FormField>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FormField label="Telephone" htmlFor="phone">
+          <FormField label="Téléphone" htmlFor="phone">
             <Input id="phone" {...register('phone')} />
           </FormField>
           <FormField label="Profession" htmlFor="profession">
@@ -96,7 +96,7 @@ export function CreateClientDialog({ open, onClose, onCreated }: { open: boolean
           <Input id="companyName" {...register('companyName')} />
         </FormField>
 
-        <FormField label="Adresse de la societe" htmlFor="companyAddress">
+        <FormField label="Adresse de la societé" htmlFor="companyAddress">
           <Input id="companyAddress" {...register('companyAddress')} />
         </FormField>
 
@@ -105,7 +105,7 @@ export function CreateClientDialog({ open, onClose, onCreated }: { open: boolean
             Annuler
           </Button>
           <Button type="submit" loading={mutation.isPending}>
-            Creer et inviter
+            Créer et inviter
           </Button>
         </div>
       </form>

@@ -43,13 +43,13 @@ function ResetPasswordPageContent() {
       toast.success('Mot de passe reinitialise.');
       setTimeout(() => router.push('/login'), 1500);
     },
-    onError: (error: unknown) => toast.error(error instanceof ApiError ? error.message : 'Ce lien est invalide ou a expire.'),
+    onError: (error: unknown) => toast.error(error instanceof ApiError ? error.message : 'Ce lien est invalide ou a expiré.'),
   });
 
   if (!token) {
     return (
       <div className="text-center">
-        <p className="text-sm text-clay-600">Ce lien est invalide. Merci de refaire une demande de reinitialisation.</p>
+        <p className="text-sm text-clay-600">Ce lien est invalide. Merci de refaire une demande de réinitialisation.</p>
         <Link href="/forgot-password" className="mt-4 inline-block text-sm text-blueprint-600 hover:underline">
           Nouvelle demande
         </Link>
@@ -70,7 +70,7 @@ function ResetPasswordPageContent() {
           <Input id="confirmPassword" type="password" {...register('confirmPassword')} />
         </FormField>
         <Button type="submit" className="w-full" loading={mutation.isPending} disabled={done}>
-          Reinitialiser le mot de passe
+          Réinitialiser le mot de passe
         </Button>
       </form>
     </div>

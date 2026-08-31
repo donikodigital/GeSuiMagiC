@@ -39,7 +39,7 @@ function AcceptInvitationPageContent() {
   const mutation = useMutation({
     mutationFn: (values: FormValues) => authService.acceptInvitation(token, values.password),
     onSuccess: () => setDone(true),
-    onError: (error: unknown) => toast.error(error instanceof ApiError ? error.message : 'Ce lien est invalide ou a expire.'),
+    onError: (error: unknown) => toast.error(error instanceof ApiError ? error.message : 'Ce lien est invalide ou a expiré.'),
   });
 
   if (done) {
@@ -49,9 +49,9 @@ function AcceptInvitationPageContent() {
           <CheckCircle2 className="h-6 w-6" />
         </div>
         <h1 className="mt-4 font-display text-xl font-semibold text-ink-900">Compte active</h1>
-        <p className="mt-2 text-sm text-ink-500">Votre mot de passe a ete defini. Vous pouvez maintenant vous connecter.</p>
+        <p className="mt-2 text-sm text-ink-500">Votre mot de passe a été defini. Vous pouvez maintenant vous connecter.</p>
         <Button className="mt-6 w-full" onClick={() => router.push('/login')}>
-          Aller a la connexion
+          Aller à la connexion
         </Button>
       </div>
     );

@@ -33,7 +33,7 @@ function baseLayout(title: string, bodyHtml: string, ctaUrl?: string, ctaLabel?:
             </tr>
             <tr>
               <td style="padding:16px 32px;background:#f9fafb;color:#9ca3af;font-size:12px;">
-                Cet email a ete envoye automatiquement par la plateforme de suivi de chantier. Ne pas repondre a cet email.
+                Cet email a été envoyé automatiquement par la plateforme GeSuiMagiC - Suivi de chantier. Ne pas repondre a cet email.
               </td>
             </tr>
           </table>
@@ -48,72 +48,72 @@ export const emailTemplates = {
   invitation: (firstName: string, inviteUrl: string) =>
     baseLayout(
       `Bienvenue ${firstName}`,
-      `<p>Un compte a ete cree pour vous sur la plateforme de suivi financier de chantier.</p>
+      `<p>Un compte a été crée pour vous sur la plateforme GeSuiMagiC (suivi financier de chantier).</p>
        <p>Cliquez sur le bouton ci-dessous pour definir votre mot de passe et activer votre compte. Ce lien expire dans 48 heures.</p>`,
       inviteUrl,
-      'Definir mon mot de passe',
+      'Définir mon mot de passe',
     ),
 
   passwordReset: (firstName: string, resetUrl: string) =>
     baseLayout(
       `Reinitialisation du mot de passe`,
-      `<p>Bonjour ${firstName},</p><p>Une demande de reinitialisation de mot de passe a ete effectuee. Si vous n'etes pas a l'origine de cette demande, ignorez cet email.</p>`,
+      `<p>Bonjour ${firstName},</p><p>Une demande de réinitialisation de mot de passe à été effectuée. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>`,
       resetUrl,
-      'Reinitialiser mon mot de passe',
+      'Réinitialiser mon mot de passe',
     ),
 
   depositCreated: (supervisorName: string, projectName: string, amount: string, url: string) =>
     baseLayout(
       `Nouveau depot a valider`,
-      `<p>Bonjour ${supervisorName},</p><p>Un depot de <strong>${amount}</strong> a ete enregistre pour le projet <strong>${projectName}</strong>. Merci de le valider ou le refuser.</p>`,
+      `<p>Bonjour ${supervisorName},</p><p>Un dépôt de <strong>${amount}</strong> a été enregistré pour le projet <strong>${projectName}</strong>. Merci de le valider ou le refuser.</p>`,
       url,
-      'Consulter le depot',
+      'Consulter le dépôt',
     ),
 
   depositApproved: (clientName: string, projectName: string, amount: string, url: string) =>
     baseLayout(
-      `Depot valide`,
-      `<p>Bonjour ${clientName},</p><p>Votre depot de <strong>${amount}</strong> pour le projet <strong>${projectName}</strong> a ete valide par le superviseur.</p>`,
+      `Dépôt validé`,
+      `<p>Bonjour ${clientName},</p><p>Votre dépôt de <strong>${amount}</strong> pour le projet <strong>${projectName}</strong> a été validé par le superviseur.</p>`,
       url,
       'Voir le projet',
     ),
 
   depositRejected: (clientName: string, projectName: string, amount: string, reason: string, url: string) =>
     baseLayout(
-      `Depot refuse`,
-      `<p>Bonjour ${clientName},</p><p>Votre depot de <strong>${amount}</strong> pour le projet <strong>${projectName}</strong> a ete refuse.</p><p><em>Motif : ${reason}</em></p>`,
+      `Dépôt refusé`,
+      `<p>Bonjour ${clientName},</p><p>Votre dépôt de <strong>${amount}</strong> pour le projet <strong>${projectName}</strong> a été refusé.</p><p><em>Motif : ${reason}</em></p>`,
       url,
       'Voir le projet',
     ),
 
   expensePendingApproval: (clientName: string, projectName: string, amount: string, label: string, url: string) =>
     baseLayout(
-      `Depense en attente de votre validation`,
-      `<p>Bonjour ${clientName},</p><p>Une depense importante <strong>${label}</strong> de <strong>${amount}</strong> a ete enregistree sur le projet <strong>${projectName}</strong> et depasse le seuil configure. Votre confirmation est requise.</p>`,
+      `Dépense en attente de votre validation`,
+      `<p>Bonjour ${clientName},</p><p>Une dépense importante <strong>${label}</strong> de <strong>${amount}</strong> a été enregistrée sur le projet <strong>${projectName}</strong> et depasse le seuil configure. Votre confirmation est requise.</p>`,
       url,
-      'Valider la depense',
+      'Valider la dépense',
     ),
 
   lowBalanceAlert: (clientName: string, projectName: string, balance: string, url: string) =>
     baseLayout(
       `Alerte : solde faible`,
-      `<p>Bonjour ${clientName},</p><p>Le solde disponible du projet <strong>${projectName}</strong> est descendu a <strong>${balance}</strong> (moins de 10% du budget).</p>`,
+      `<p>Bonjour ${clientName},</p><p>Le solde disponible du projet <strong>${projectName}</strong> est descendu à <strong>${balance}</strong> (moins de 10% du budget).</p>`,
       url,
       'Voir le tableau de bord',
     ),
 
   budgetExceededAlert: (clientName: string, projectName: string, category: string, url: string) =>
     baseLayout(
-      `Alerte : depassement de budget`,
-      `<p>Bonjour ${clientName},</p><p>La categorie <strong>${category}</strong> du projet <strong>${projectName}</strong> a depasse le budget previsionnel alloue.</p>`,
+      `Alerte : dépassement de budget`,
+      `<p>Bonjour ${clientName},</p><p>La catégorie <strong>${category}</strong> du projet <strong>${projectName}</strong> a dépassé le budget previsionnel alloué.</p>`,
       url,
       'Voir le budget',
     ),
 
   adminCorrection: (clientName: string, entityType: string, oldValue: string, newValue: string, reason: string, url: string) =>
     baseLayout(
-      `Correction administrative effectuee`,
-      `<p>Bonjour ${clientName},</p><p>Une correction administrative a ete appliquee sur ${entityType === 'Deposit' ? 'un depot' : 'une depense'} de votre projet.</p>
+      `Correction administrative effectuée`,
+      `<p>Bonjour ${clientName},</p><p>Une correction administrative a été appliquée sur ${entityType === 'Deposit' ? 'un dépôt' : 'une dépense'} de votre projet.</p>
        <p>Ancienne valeur : <strong>${oldValue}</strong><br/>Nouvelle valeur : <strong>${newValue}</strong><br/>Motif : ${reason}</p>`,
       url,
       'Voir le detail',
@@ -121,8 +121,8 @@ export const emailTemplates = {
 
   anomalyReported: (superadminLabel: string, projectName: string, description: string, url: string) =>
     baseLayout(
-      `Nouvelle anomalie signalee`,
-      `<p>Une anomalie a ete signalee sur le projet <strong>${projectName}</strong>.</p><p><em>${description}</em></p>`,
+      `Nouvelle anomalie signalée`,
+      `<p>Une anomalie a été signalée sur le projet <strong>${projectName}</strong>.</p><p><em>${description}</em></p>`,
       url,
       'Traiter le signalement',
     ),
@@ -146,9 +146,9 @@ export const emailTemplates = {
   adminFieldUpdate: (clientName: string, entityType: string, changedFields: string, url: string) =>
     baseLayout(
       `Modification administrative`,
-      `<p>Bonjour ${clientName},</p><p>Le superadministrateur a modifie ${entityType === 'Deposit' ? 'un depot' : 'une depense'} de votre projet.</p>
-       <p>Champs modifies : <strong>${changedFields}</strong></p>`,
+      `<p>Bonjour ${clientName},</p><p>Le superadministrateur a modifié ${entityType === 'Deposit' ? 'un dépôt' : 'une dépense'} de votre projet.</p>
+       <p>Champs modifiés : <strong>${changedFields}</strong></p>`,
       url,
-      'Voir le detail',
+      'Voir le détail',
     ),
 };

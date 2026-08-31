@@ -24,7 +24,7 @@ export class ClientsService {
   /** Section 7-8 : creation d'un client (+ premier projet optionnel) + invitation securisee. */
   async create(dto: CreateClientDto, actor: AuthenticatedUser) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase().trim() } });
-    if (existing) throw AppException.conflict('EMAIL_ALREADY_USED', 'Cet email est deja utilise par un compte existant.');
+    if (existing) throw AppException.conflict('EMAIL_ALREADY_USED', 'Cet email est déjà utilisé par un compte existant.');
 
     const { user, clientProfile } = await this.prisma.runInTransaction(async (tx) => {
       const createdUser = await tx.user.create({

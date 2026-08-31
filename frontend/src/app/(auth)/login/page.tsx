@@ -67,7 +67,7 @@ export default function LoginPage() {
 
         <div className="flex justify-end">
           <Link href="/forgot-password" className="text-sm text-blueprint-600 hover:underline">
-            Mot de passe oublie ?
+            Mot de passe oublié ?
           </Link>
         </div>
 

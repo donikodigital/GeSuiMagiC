@@ -121,10 +121,10 @@ export class AuthService {
     await this.notifications.send({
       userId: user.id,
       type: 'ACCOUNT_INVITATION',
-      title: 'Invitation a rejoindre la plateforme',
-      message: 'Un email d\'invitation vous a ete envoye pour activer votre compte.',
+      title: 'Invitation à rejoindre la plateforme',
+      message: 'Un email d\'invitation vous a été envoyé pour activer votre compte.',
       emailHtml: emailTemplates.invitation(firstName, inviteUrl),
-      emailSubject: 'Activez votre compte - Suivi de Chantier',
+      emailSubject: 'Activez votre compte GeSuiMagiC- Suivi de Chantier',
     });
   }
 
@@ -178,10 +178,10 @@ export class AuthService {
     await this.notifications.send({
       userId: user.id,
       type: 'PASSWORD_RESET',
-      title: 'Reinitialisation du mot de passe',
-      message: 'Une demande de reinitialisation de mot de passe a ete effectuee.',
+      title: 'Réinitialisation du mot de passe',
+      message: 'Une demande de réinitialisation de mot de passe a été effectuée.',
       emailHtml: emailTemplates.passwordReset(firstName, resetUrl),
-      emailSubject: 'Reinitialisation de votre mot de passe',
+      emailSubject: 'Réinitialisation de votre mot de passe',
     });
   }
 
@@ -204,7 +204,7 @@ export class AuthService {
       action: 'PASSWORD_CHANGE',
       entityType: 'User',
       entityId: user.id,
-      reason: 'Reinitialisation via lien "mot de passe oublie"',
+      reason: 'Réinitialisation via lien "mot de passe oublié"',
       ipAddress: meta.ipAddress,
       userAgent: meta.userAgent,
     });
