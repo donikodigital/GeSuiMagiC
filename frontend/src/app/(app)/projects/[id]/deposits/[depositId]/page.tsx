@@ -52,7 +52,7 @@ export default function DepositDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
       queryClient.invalidateQueries({ queryKey: ['projects', params.id] });
-      toast.success('Correction appliquée, historique conserve.');
+      toast.success('Correction appliquée, historique conservée.');
       setCorrecting(false);
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Correction impossible.'),

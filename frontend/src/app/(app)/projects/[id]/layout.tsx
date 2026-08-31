@@ -40,14 +40,14 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
 
   const base = `/projects/${params.id}`;
   const tabs = [
-    { label: 'Apercu', href: base },
-    { label: 'Depots', href: `${base}/deposits` },
-    { label: 'Depenses', href: `${base}/expenses` },
+    { label: 'Aperçu', href: base },
+    { label: 'Dépôts', href: `${base}/deposits` },
+    { label: 'Dépenses', href: `${base}/expenses` },
     { label: 'Budgets', href: `${base}/budgets` },
     { label: 'Documents', href: `${base}/documents` },
     ...(isClient || isSuperadmin ? [{ label: 'Superviseurs', href: `${base}/supervisors` }] : []),
     ...(isClient ? [{ label: 'Anomalies', href: `${base}/anomalies` }] : []),
-    ...(isClient || isSuperadmin ? [{ label: 'Reglages', href: `${base}/settings` }] : []),
+    ...(isClient || isSuperadmin ? [{ label: 'Réglages', href: `${base}/settings` }] : []),
   ];
 
   const balance = parseFloat(project.wallet?.balance ?? '0');
@@ -57,7 +57,7 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
       if (type === 'pdf') await reportsService.downloadPdf(project.id, project.name);
       else await reportsService.downloadExcel(project.id, project.name);
     } catch {
-      toast.error('Le telechargement a echoue.');
+      toast.error('Le téléchargement a echoué.');
     }
   };
 

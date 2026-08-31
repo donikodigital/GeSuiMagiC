@@ -58,7 +58,7 @@ function SupervisorDetailPageContent() {
         </div>
         {isSuspended ? (
           <Button size="sm" onClick={() => statusMutation.mutate('ACTIVE')} loading={statusMutation.isPending}>
-            <CheckCircle2 className="h-4 w-4" /> Reactiver
+            <CheckCircle2 className="h-4 w-4" /> Réactiver
           </Button>
         ) : (
           <Button variant="danger" size="sm" onClick={() => statusMutation.mutate('SUSPENDED')} loading={statusMutation.isPending}>
@@ -79,9 +79,9 @@ function SupervisorDetailPageContent() {
 
         <Card>
           <CardContent>
-            <h3 className="mb-3 font-display text-sm font-semibold text-ink-700">Projets affectes</h3>
+            <h3 className="mb-3 font-display text-sm font-semibold text-ink-700">Projets affectés</h3>
             {!supervisor.projectAssignments || supervisor.projectAssignments.length === 0 ? (
-              <p className="text-sm text-ink-400">Aucun projet affecte.</p>
+              <p className="text-sm text-ink-400">Aucun projet affecté.</p>
             ) : (
               <ul className="divide-y divide-concrete">
                 {supervisor.projectAssignments.map((a) => (

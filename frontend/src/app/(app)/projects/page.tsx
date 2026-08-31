@@ -22,8 +22,8 @@ export default function ProjectsPage() {
   return (
     <div>
       <PageHeader
-        title={isSupervisor ? 'Mes chantiers affectes' : 'Projets'}
-        description="Portefeuille financier independant par chantier."
+        title={isSupervisor ? 'Mes chantiers affectés' : 'Projets'}
+        description="Portefeuille financier indépendant par chantier."
         actions={
           isClient && (
             <Link href="/projects/new">
@@ -55,7 +55,7 @@ export default function ProjectsPage() {
       ) : isLoading ? (
         <PageSpinner />
       ) : (data?.items.length ?? 0) === 0 ? (
-        <EmptyState title="Aucun projet" description="Creez votre premier chantier pour commencer le suivi financier." />
+        <EmptyState title="Aucun projet" description="Créez votre premier chantier pour commencer le suivi financier." />
       ) : (
         <>
           <div className="space-y-3">

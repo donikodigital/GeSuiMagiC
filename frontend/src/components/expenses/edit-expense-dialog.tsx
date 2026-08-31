@@ -77,8 +77,8 @@ export function EditExpenseDialog({ open, onClose, expense, onConfirm, isLoading
     <Dialog
       open={open}
       onClose={onClose}
-      title="Modifier cette depense"
-      description="Toute modification par le superadministrateur est tracee dans le journal d'audit et notifiee au client. Si la quantite ou le prix unitaire change, le total est recalcule."
+      title="Modifier cette dépense"
+      description="Toute modification par le superadministrateur est tracee dans le journal d'audit et notifiée au client. Si la quantite ou le prix unitaire change, le total est recalcule."
       maxWidth="max-w-xl"
     >
       <div className="space-y-4">
@@ -111,7 +111,7 @@ export function EditExpenseDialog({ open, onClose, expense, onConfirm, isLoading
           </FormField>
         </div>
 
-        <FormField label="Libelle" htmlFor="edit-exp-label" required>
+        <FormField label="Libellé" htmlFor="edit-exp-label" required>
           <Input id="edit-exp-label" value={label} onChange={(e) => setLabel(e.target.value)} />
         </FormField>
 
@@ -119,7 +119,7 @@ export function EditExpenseDialog({ open, onClose, expense, onConfirm, isLoading
           <FormField label="Quantite" htmlFor="edit-exp-quantity" required>
             <Input id="edit-exp-quantity" type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </FormField>
-          <FormField label="Unite" htmlFor="edit-exp-unit" required>
+          <FormField label="Unité" htmlFor="edit-exp-unit" required>
             <Select id="edit-exp-unit" value={unit} onChange={(e) => setUnit(e.target.value)}>
               {units?.map((u) => (
                 <option key={u.id} value={u.symbol || u.name}>
@@ -142,7 +142,7 @@ export function EditExpenseDialog({ open, onClose, expense, onConfirm, isLoading
           </FormField>
         </div>
 
-        <FormField label="Reference facture" htmlFor="edit-exp-invoice">
+        <FormField label="Référence facture" htmlFor="edit-exp-invoice">
           <Input id="edit-exp-invoice" value={invoiceReference} onChange={(e) => setInvoiceReference(e.target.value)} />
         </FormField>
 

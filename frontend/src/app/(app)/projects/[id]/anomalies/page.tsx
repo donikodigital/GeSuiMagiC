@@ -21,7 +21,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   montant_incorrect: 'Montant incorrect',
   doublon: 'Doublon',
   justificatif_absent: 'Justificatif absent',
-  materiau_suspect: 'Materiau suspect',
+  materiau_suspect: 'Matériau suspect',
   autre: 'Autre',
 };
 
@@ -56,8 +56,8 @@ export default function ProjectAnomaliesPage() {
       {data?.items.length === 0 ? (
         <EmptyState
           icon={<ShieldAlert className="h-6 w-6" />}
-          title="Aucune anomalie signalee"
-          description="Signalez toute depense ou operation qui vous semble incorrecte."
+          title="Aucune anomalie signalée"
+          description="Signalez toute dépense ou opération qui vous semble incorrecte."
         />
       ) : (
         <div className="space-y-3">
@@ -133,7 +133,7 @@ function AnomalyDialog({ open, onClose, projectId }: { open: boolean; onClose: (
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Decrivez ce qui vous parait incorrect..."
+            placeholder="Décrivez ce qui vous parait incorrect..."
           />
         </FormField>
       </div>

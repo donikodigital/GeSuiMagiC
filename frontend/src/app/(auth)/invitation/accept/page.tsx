@@ -48,8 +48,8 @@ function AcceptInvitationPageContent() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-moss-50 text-moss-600">
           <CheckCircle2 className="h-6 w-6" />
         </div>
-        <h1 className="mt-4 font-display text-xl font-semibold text-ink-900">Compte active</h1>
-        <p className="mt-2 text-sm text-ink-500">Votre mot de passe a été defini. Vous pouvez maintenant vous connecter.</p>
+        <h1 className="mt-4 font-display text-xl font-semibold text-ink-900">Compte activé</h1>
+        <p className="mt-2 text-sm text-ink-500">Votre mot de passe a été defini avec succès. Vous pouvez maintenant vous connecter.</p>
         <Button className="mt-6 w-full" onClick={() => router.push('/login')}>
           Aller à la connexion
         </Button>
@@ -64,7 +64,7 @@ function AcceptInvitationPageContent() {
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-ink-900">Bienvenue</h1>
-      <p className="mt-1 text-sm text-ink-500">Definissez votre mot de passe pour activer votre compte.</p>
+      <p className="mt-1 text-sm text-ink-500">Définissez votre mot de passe pour activer votre compte.</p>
 
       <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="mt-8 space-y-4">
         <FormField label="Mot de passe" htmlFor="password" error={errors.password?.message} required>

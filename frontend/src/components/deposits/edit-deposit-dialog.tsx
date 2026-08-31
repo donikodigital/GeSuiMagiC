@@ -57,8 +57,8 @@ export function EditDepositDialog({ open, onClose, deposit, onConfirm, isLoading
     <Dialog
       open={open}
       onClose={onClose}
-      title="Modifier ce depot"
-      description="Toute modification par le superadministrateur est tracee dans le journal d'audit et notifiee au client."
+      title="Modifier ce dépôt"
+      description="Toute modification par le superadministrateur est tracée dans le journal d'audit et notifiée au client."
     >
       <div className="space-y-4">
         <FormField label="Montant" htmlFor="edit-dep-amount" required>

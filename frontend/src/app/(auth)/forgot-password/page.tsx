@@ -34,12 +34,12 @@ export default function ForgotPasswordPage() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-moss-50 text-moss-600">
           <MailCheck className="h-6 w-6" />
         </div>
-        <h1 className="mt-4 font-display text-xl font-semibold text-ink-900">Verifiez votre boite mail</h1>
+        <h1 className="mt-4 font-display text-xl font-semibold text-ink-900">Vérifiez votre boîte mail</h1>
         <p className="mt-2 text-sm text-ink-500">
-          Si cette adresse est associee a un compte, un lien de reinitialisation vient d&apos;etre envoye.
+          Si cette adresse est associée à un compte, un lien de réinitialisation vient d&apos;être envoyé.
         </p>
         <Link href="/login" className="mt-6 inline-flex items-center gap-1 text-sm text-blueprint-600 hover:underline">
-          <ArrowLeft className="h-4 w-4" /> Retour a la connexion
+          <ArrowLeft className="h-4 w-4" /> Retour à la connexion
         </Link>
       </div>
     );
@@ -58,7 +58,7 @@ export default function ForgotPasswordPage() {
           Envoyer le lien
         </Button>
         <Link href="/login" className="flex items-center justify-center gap-1 text-sm text-ink-500 hover:underline">
-          <ArrowLeft className="h-4 w-4" /> Retour a la connexion
+          <ArrowLeft className="h-4 w-4" /> Retour à la connexion
         </Link>
       </form>
     </div>

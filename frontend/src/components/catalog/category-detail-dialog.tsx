@@ -47,7 +47,7 @@ export function CategoryDetailDialog({ open, onClose, category }: { open: boolea
     mutationFn: () => (category.isActive ? catalogService.categories.deactivate(category.id) : catalogService.categories.reactivate(category.id)),
     onSuccess: () => {
       invalidate();
-      toast.success(category.isActive ? 'Categorie desactivée.' : 'Categorie reactivée.');
+      toast.success(category.isActive ? 'Catégorie desactivée.' : 'Catégorie reactivée.');
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de modifier le statut.'),
   });
@@ -56,7 +56,7 @@ export function CategoryDetailDialog({ open, onClose, category }: { open: boolea
     mutationFn: () => catalogService.categories.remove(category.id),
     onSuccess: () => {
       invalidate();
-      toast.success('Categorie supprimée.');
+      toast.success('Catégorie supprimée.');
       onClose();
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Impossible de supprimer cette catégorie.'),
@@ -64,7 +64,7 @@ export function CategoryDetailDialog({ open, onClose, category }: { open: boolea
 
   if (isEditing) {
     return (
-      <Dialog open={open} onClose={onClose} title="Modifier la categorie">
+      <Dialog open={open} onClose={onClose} title="Modifier la catégorie">
         <div className="space-y-4">
           <FormField label="Nom" htmlFor="cat-edit-name" required>
             <Input id="cat-edit-name" value={name} onChange={(e) => setName(e.target.value)} />

@@ -101,7 +101,7 @@ function ProjectStatusCard({ projectId, currentStatus }: { projectId: string; cu
               </FormField>
             </div>
             <div className="flex items-center gap-2 pb-2.5 sm:pb-0.5">
-              <span className="text-xs text-ink-400">Apercu</span>
+              <span className="text-xs text-ink-400">Aperçu</span>
               <StatusBadge label={projectStatusMeta[status].label} tone={projectStatusMeta[status].tone} />
             </div>
           </div>
@@ -150,9 +150,9 @@ function ProjectFinancialsCard({ project, projectId }: { project: NonNullable<Re
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
-      toast.success('Parametres mis a jour.');
+      toast.success('Paramètres mis à jour.');
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Mise a jour impossible.'),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Mise à jour impossible.'),
   });
 
   return (
@@ -173,7 +173,7 @@ function ProjectFinancialsCard({ project, projectId }: { project: NonNullable<Re
           <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-concrete bg-paper/60 px-4 py-3">
             <div>
               <p className="text-sm font-medium text-ink-800">Validation automatique sous le seuil</p>
-              <p className="text-xs text-ink-500">{autoApprove ? 'Activee' : 'Desactivee'} — modifiable a tout moment.</p>
+              <p className="text-xs text-ink-500">{autoApprove ? 'Activee' : 'Desactivee'} — modifiable à tout moment.</p>
             </div>
             <input type="checkbox" className="peer sr-only" {...register('autoApproveExpenses')} />
             <span className="relative h-6 w-11 shrink-0 rounded-full bg-concrete-dark transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-moss peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-blueprint-400 peer-focus-visible:ring-offset-2" />
@@ -184,7 +184,7 @@ function ProjectFinancialsCard({ project, projectId }: { project: NonNullable<Re
             htmlFor="expenseApprovalThreshold"
             hint={
               autoApprove
-                ? 'Au-dela de ce montant, votre confirmation sera demandée pour chaque dépense.'
+                ? 'Au-delà de ce montant, votre confirmation sera demandée pour chaque dépense.'
                 : 'Ce seuil est ignoré tant que la validation automatique est desactivée.'
             }
           >
@@ -203,7 +203,7 @@ function ProjectFinancialsCard({ project, projectId }: { project: NonNullable<Re
           </FormField>
 
           {canEditBudget && (
-            <FormField label="Budget du projet" htmlFor="budget" hint="Budget de reference pour le suivi financier de ce chantier.">
+            <FormField label="Budget du projet" htmlFor="budget" hint="Budget de référence pour le suivi financier de ce chantier.">
               <div className="relative">
                 <Input id="budget" type="number" className="pr-14" {...register('budget', { valueAsNumber: true })} />
                 <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-ink-400">

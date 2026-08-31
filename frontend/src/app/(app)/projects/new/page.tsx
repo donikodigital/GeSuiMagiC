@@ -94,7 +94,7 @@ function NewProjectPageContent() {
           <CardHeader className="items-start gap-3">
             <SectionIcon icon={Building2} />
             <div>
-              <CardTitle>Informations generales</CardTitle>
+              <CardTitle>Informations générales</CardTitle>
               <CardDescription>Le nom et la nature du chantier.</CardDescription>
             </div>
           </CardHeader>
@@ -128,7 +128,7 @@ function NewProjectPageContent() {
             </div>
 
             <FormField label="Motif" htmlFor="motif">
-              <Input id="motif" placeholder="Residence familiale, investissement locatif..." {...register('motif')} />
+              <Input id="motif" placeholder="Résidence familiale, investissement locatif..." {...register('motif')} />
             </FormField>
 
             <FormField label="Description" htmlFor="description">
@@ -142,7 +142,7 @@ function NewProjectPageContent() {
             <SectionIcon icon={MapPin} />
             <div>
               <CardTitle>Localisation</CardTitle>
-              <CardDescription>Ou se trouve le chantier.</CardDescription>
+              <CardDescription>Où se trouve le chantier.</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -154,7 +154,7 @@ function NewProjectPageContent() {
                 <Input id="city" placeholder="Conakry" {...register('city')} />
               </FormField>
               <FormField label="Pays" htmlFor="country">
-                <Input id="country" placeholder="Guinee" {...register('country')} />
+                <Input id="country" placeholder="Guinée" {...register('country')} />
               </FormField>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -181,10 +181,10 @@ function NewProjectPageContent() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField label="Date de debut prevue" htmlFor="startDate">
+              <FormField label="Date de début prevue" htmlFor="startDate">
                 <Input id="startDate" type="date" {...register('startDate')} />
               </FormField>
-              <FormField label="Date de fin estimee" htmlFor="endDate">
+              <FormField label="Date de fin estimée" htmlFor="endDate">
                 <Input id="endDate" type="date" {...register('endDate')} />
               </FormField>
             </div>
@@ -196,7 +196,7 @@ function NewProjectPageContent() {
             <SectionIcon icon={Wallet} />
             <div>
               <CardTitle>Budget</CardTitle>
-              <CardDescription>Le budget de reference pour le suivi financier du chantier.</CardDescription>
+              <CardDescription>Le budget de référence pour le suivi financier du chantier.</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -213,7 +213,7 @@ function NewProjectPageContent() {
               </FormField>
             </div>
 
-            <FormField label="Budget alloue" htmlFor="budget" required error={errors.budget?.message} hint="C'est le budget de reference pour le suivi financier du chantier.">
+            <FormField label="Budget alloue" htmlFor="budget" required error={errors.budget?.message} hint="C'est le budget de référence pour le suivi financier du chantier.">
               <div className="relative">
                 <Input
                   id="budget"
@@ -234,8 +234,8 @@ function NewProjectPageContent() {
           <CardHeader className="items-start gap-3">
             <SectionIcon icon={ShieldCheck} />
             <div>
-              <CardTitle>Validation des depenses</CardTitle>
-              <CardDescription>Comment les depenses du superviseur seront validees sur ce chantier.</CardDescription>
+              <CardTitle>Validation des dépenses</CardTitle>
+              <CardDescription>Comment les dépenses du superviseur seront validées sur ce chantier.</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -248,7 +248,7 @@ function NewProjectPageContent() {
               <span>
                 <span className="block text-sm font-medium text-ink-800">Validation automatique en dessous du seuil</span>
                 <span className="mt-0.5 block text-xs text-ink-500">
-                  Si desactive, chaque depense necessitera votre confirmation, quel que soit son montant.
+                  Si desactivé, chaque dépense necessitera votre confirmation, quel que soit son montant.
                 </span>
               </span>
             </label>
@@ -258,8 +258,8 @@ function NewProjectPageContent() {
               htmlFor="expenseApprovalThreshold"
               hint={
                 autoApproveExpenses
-                  ? "Au-dela de ce montant, une depense necessitera votre confirmation. Laisse vide, une valeur de securite s'applique."
-                  : 'Ce seuil est ignore tant que la validation automatique est desactivee.'
+                  ? "Au-delà de ce montant, une dépense necessitera votre confirmation. Laisse vide, une valeur de securité s'applique."
+                  : 'Ce seuil est ignoré tant que la validation automatique est desactivée.'
               }
             >
               <div className="relative">
@@ -285,7 +285,7 @@ function NewProjectPageContent() {
               Annuler
             </Button>
             <Button type="submit" loading={createProject.isPending}>
-              Creer le projet
+              Créer le projet
             </Button>
           </div>
         </div>

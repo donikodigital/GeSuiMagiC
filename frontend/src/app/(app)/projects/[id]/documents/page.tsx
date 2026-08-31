@@ -18,7 +18,7 @@ export default function ProjectDocumentsPage() {
         </span>
         <div>
           <CardTitle>Documents du projet</CardTitle>
-          <CardDescription>Devis, plans, contrats et documents administratifs généraux (hors justificatifs de dépenses/dépôts).</CardDescription>
+          <CardDescription>Dévis, plans, contrats et documents administratifs généraux (hors justificatifs de dépenses/dépôts).</CardDescription>
         </div>
       </CardHeader>
       <CardContent>

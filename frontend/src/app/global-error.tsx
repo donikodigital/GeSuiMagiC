@@ -19,10 +19,10 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           </div>
           <h1 className="mt-6 font-display text-2xl font-semibold text-ink-900">Une erreur est survenue</h1>
           <p className="mt-2 max-w-sm text-sm text-ink-500">
-            Quelque chose s&apos;est mal passe de notre cote. Vous pouvez reessayer, aucune donnee n&apos;a ete perdue.
+            Quelque chose s&apos;est mal passé de notre côté. Vous pouvez réessayer, aucune donnée n&apos;a été perdue.
           </p>
           <Button className="mt-6" onClick={reset}>
-            Reessayer
+            Réessayer
           </Button>
         </div>
       </body>

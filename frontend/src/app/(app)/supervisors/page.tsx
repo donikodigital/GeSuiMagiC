@@ -27,7 +27,7 @@ function SupervisorsPageContent() {
     <div>
       <PageHeader
         title="Superviseurs"
-        description="Personnes chargees de recevoir et d'utiliser les fonds sur vos chantiers."
+        description="Personnes chargées de recevoir et d'utiliser les fonds sur vos chantiers."
         actions={
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" /> Nouveau superviseur
@@ -55,7 +55,7 @@ function SupervisorsPageContent() {
       ) : isLoading ? (
         <PageSpinner />
       ) : (data?.items.length ?? 0) === 0 ? (
-        <EmptyState title="Aucun superviseur" description="Creez votre premier superviseur pour lui confier un chantier." />
+        <EmptyState title="Aucun superviseur" description="Créez votre premier superviseur pour lui confier un chantier." />
       ) : (
         <>
           <div className="space-y-3">

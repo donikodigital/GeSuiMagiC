@@ -24,8 +24,8 @@ import { formatDate, formatMoney, depositStatusMeta, expenseStatusMeta } from '@
 
 const BAR_COLORS: Record<string, string> = {
   Budget: '#1e3a5f',
-  Verse: '#4a7c59',
-  Depense: '#b5533c',
+  Versé: '#4a7c59',
+  Dépensé: '#b5533c',
   Solde: '#c9a24a',
 };
 
@@ -39,7 +39,7 @@ export default function ProjectOverviewPage() {
   const updateBudgetMutation = useUpdateProjectBudget(params.id);
 
   if (isLoading) return <PageSpinner />;
-  if (isError || !summary) return <ErrorState message="Impossible de charger le resume financier." />;
+  if (isError || !summary) return <ErrorState message="Impossible de charger le resumé financier." />;
 
   const balance = parseFloat(summary.balance);
   const usedPct = Math.max(0, Number(summary.budgetUsedPercent) || 0);
@@ -49,14 +49,14 @@ export default function ProjectOverviewPage() {
 
   const chartData = [
     { label: 'Budget', value: parseFloat(summary.budget) },
-    { label: 'Verse', value: parseFloat(summary.totalDeposited) },
-    { label: 'Depense', value: parseFloat(summary.totalSpent) },
+    { label: 'Versé', value: parseFloat(summary.totalDeposited) },
+    { label: 'Dépensé', value: parseFloat(summary.totalSpent) },
     { label: 'Solde', value: balance },
   ];
 
   const transactions = [
-    ...(recentDeposits?.items ?? []).map((d) => ({ type: 'Depot' as const, date: d.date, amount: parseFloat(d.amount), status: d.status, id: d.id })),
-    ...(recentExpenses?.items ?? []).map((e) => ({ type: 'Depense' as const, date: e.date, amount: -parseFloat(e.total), status: e.status, id: e.id, label: e.label })),
+    ...(recentDeposits?.items ?? []).map((d) => ({ type: 'Dépôt' as const, date: d.date, amount: parseFloat(d.amount), status: d.status, id: d.id })),
+    ...(recentExpenses?.items ?? []).map((e) => ({ type: 'Dépense' as const, date: e.date, amount: -parseFloat(e.total), status: e.status, id: e.id, label: e.label })),
   ]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 8);
@@ -88,7 +88,7 @@ export default function ProjectOverviewPage() {
           <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">
             <div className="flex items-center gap-1.5 text-moss-600">
               <ArrowDownToLine className="h-3.5 w-3.5 shrink-0" />
-              <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Total verse</p>
+              <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Total versé</p>
             </div>
             <p className="truncate font-ledger text-sm font-semibold text-ink-900 sm:text-base">{formatMoney(summary.totalDeposited, summary.currency)}</p>
           </CardContent>
@@ -98,7 +98,7 @@ export default function ProjectOverviewPage() {
           <CardContent className="min-w-0 space-y-1.5 p-3 sm:p-4">
             <div className="flex items-center gap-1.5 text-safety-500">
               <ArrowUpFromLine className="h-3.5 w-3.5 shrink-0" />
-              <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Total depense</p>
+              <p className="truncate text-[10px] uppercase tracking-wide sm:text-xs">Total dépensé</p>
             </div>
             <p className="truncate font-ledger text-sm font-semibold text-ink-900 sm:text-base">{formatMoney(summary.totalSpent, summary.currency)}</p>
             <div>
@@ -134,12 +134,12 @@ export default function ProjectOverviewPage() {
         <div className="flex flex-wrap gap-3 rounded-card border border-safety-200 bg-safety-50 px-4 py-3 text-sm text-safety-500">
           {summary.pendingDepositsCount > 0 && (
             <span>
-              {summary.pendingDepositsCount} depot(s) en attente ({formatMoney(summary.pendingDepositsAmount, summary.currency)})
+              {summary.pendingDepositsCount} dépôt(s) en attente ({formatMoney(summary.pendingDepositsAmount, summary.currency)})
             </span>
           )}
           {summary.pendingExpensesCount > 0 && (
             <span>
-              {summary.pendingExpensesCount} depense(s) en attente de confirmation ({formatMoney(summary.pendingExpensesAmount, summary.currency)})
+              {summary.pendingExpensesCount} dépense(s) en attente de confirmation ({formatMoney(summary.pendingExpensesAmount, summary.currency)})
             </span>
           )}
         </div>
@@ -150,14 +150,14 @@ export default function ProjectOverviewPage() {
           {isClient && (
             <Link href={`/projects/${params.id}/deposits/new`}>
               <Button size="sm" className="bg-[#C9A24A] text-[#1B1400] hover:bg-[#D8B563]">
-                <Plus className="h-4 w-4" /> Nouveau depot
+                <Plus className="h-4 w-4" /> Nouveau dépôt
               </Button>
             </Link>
           )}
           {isSupervisor && (
             <Link href={`/projects/${params.id}/expenses/new`}>
               <Button size="sm" className="bg-[#C9A24A] text-[#1B1400] hover:bg-[#D8B563]">
-                <ReceiptText className="h-4 w-4" /> Nouvelle depense
+                <ReceiptText className="h-4 w-4" /> Nouvelle dépense
               </Button>
             </Link>
           )}
@@ -167,7 +167,7 @@ export default function ProjectOverviewPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Vue financiere</CardTitle>
+            <CardTitle>Vue financière</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -188,7 +188,7 @@ export default function ProjectOverviewPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Transactions recentes</CardTitle>
+            <CardTitle>Transactions récentes</CardTitle>
           </CardHeader>
           <CardContent className="max-h-64 overflow-y-auto p-0">
             {transactions.length === 0 ? (

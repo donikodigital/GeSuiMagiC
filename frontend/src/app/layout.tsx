@@ -7,7 +7,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Suivi de Chantier',
-  description: 'Plateforme de gestion financiere et de suivi de chantier',
+  description: 'Plateforme de gestion financière et de suivi de chantier',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
