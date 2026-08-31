@@ -1,6 +1,7 @@
+//backend/src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -14,6 +15,10 @@ async function bootstrap() {
     origin: config.get<string[]>('corsOrigins'),
     credentials: true,
   });
+
+  // --- Prefixation Globale API ---
+  // Definit le prefixe /api pour toutes les routes backend
+  app.setGlobalPrefix('api');
 
   // Toutes les donnees entrantes sont validees ; le frontend n'est jamais
   // considere comme une couche de securite (section 65).
