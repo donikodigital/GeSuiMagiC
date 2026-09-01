@@ -1,8 +1,10 @@
-// frontend/src/app/(app)/projects/[id]/page.tsx - v1.4
-// Carte "Budget" rendue cliquable pour isClient et isSuperadmin (les seuls
-// roles pour qui cette carte s'affiche - deja exclue pour isSupervisor),
-// ouvre EditBudgetDialog. Reste du fichier (graphique, transactions
-// recentes, cartes Verse/Depense/Solde) inchange.
+// frontend/src/app/(app)/projects/[id]/page.tsx - v1.5
+// Fix erreur de build TS2367 : le tableau "transactions" utilise
+// type: 'Dépôt' | 'Dépense' (avec accents), mais deux comparaisons plus
+// bas dans le JSX testaient encore t.type === 'Depot' (sans accent) -
+// residu du remplacement d'accents qui n'avait pas synchronise ces deux
+// occurrences. Corrigees pour comparer a 'Dépôt', coherent avec la
+// definition du tableau. Aucun autre changement.
 
 'use client';
 
@@ -39,7 +41,7 @@ export default function ProjectOverviewPage() {
   const updateBudgetMutation = useUpdateProjectBudget(params.id);
 
   if (isLoading) return <PageSpinner />;
-  if (isError || !summary) return <ErrorState message="Impossible de charger le resumé financier." />;
+  if (isError || !summary) return <ErrorState message="Impossible de charger le résumé financier." />;
 
   const balance = parseFloat(summary.balance);
   const usedPct = Math.max(0, Number(summary.budgetUsedPercent) || 0);
@@ -199,13 +201,13 @@ export default function ProjectOverviewPage() {
                   <li key={`${t.type}-${t.id}`} className="flex items-center gap-3 px-5 py-3">
                     <div
                       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                        t.type === 'Depot' ? 'bg-moss-50 text-moss-600' : 'bg-concrete-light text-ink-500'
+                        t.type === 'Dépôt' ? 'bg-moss-50 text-moss-600' : 'bg-concrete-light text-ink-500'
                       }`}
                     >
-                      {t.type === 'Depot' ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                      {t.type === 'Dépôt' ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-ink-800">{t.type === 'Depot' ? 'Depot de fonds' : t.label}</p>
+                      <p className="truncate text-sm font-medium text-ink-800">{t.type === 'Dépôt' ? 'Dépôt de fonds' : t.label}</p>
                       <p className="text-xs text-ink-400">{formatDate(t.date)}</p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -214,8 +216,8 @@ export default function ProjectOverviewPage() {
                         {formatMoney(t.amount, summary.currency)}
                       </p>
                       <StatusBadge
-                        label={(t.type === 'Depot' ? depositStatusMeta : expenseStatusMeta)[t.status as keyof typeof depositStatusMeta].label}
-                        tone={(t.type === 'Depot' ? depositStatusMeta : expenseStatusMeta)[t.status as keyof typeof depositStatusMeta].tone}
+                        label={(t.type === 'Dépôt' ? depositStatusMeta : expenseStatusMeta)[t.status as keyof typeof depositStatusMeta].label}
+                        tone={(t.type === 'Dépôt' ? depositStatusMeta : expenseStatusMeta)[t.status as keyof typeof depositStatusMeta].tone}
                       />
                     </div>
                   </li>
