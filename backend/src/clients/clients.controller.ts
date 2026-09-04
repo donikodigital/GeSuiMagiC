@@ -1,5 +1,5 @@
 //backend/src/clients/clients.controller.ts
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -63,5 +63,11 @@ export class ClientsController {
   @Roles(UserRole.SUPERADMIN)
   async reactivate(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.clientsService.setSuspended(id, false, actor);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPERADMIN)
+  async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.clientsService.remove(id, actor);
   }
 }

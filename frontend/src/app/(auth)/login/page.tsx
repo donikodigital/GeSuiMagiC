@@ -37,7 +37,7 @@ export default function LoginPage() {
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-ink-900">Connexion</h1>
-      <p className="mt-1 text-sm text-ink-500">Accedez à votre espace de suivi de chantier.</p>
+      <p className="mt-1 text-sm text-ink-500">Accédez à votre espace de suivi de chantier.</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4">
         <FormField label="Email" htmlFor="email" error={errors.email?.message} required>

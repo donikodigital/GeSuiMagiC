@@ -163,4 +163,48 @@ export class ClientsService {
 
     return updated;
   }
+
+  /**
+   * Suppression definitive d'un client (bouton superadmin - visible cote
+   * front uniquement quand 0 projet). Verification refaite ici cote
+   * serveur : ne jamais se fier au seul masquage du bouton, un appel API
+   * direct pourrait sinon supprimer un client avec projets et casser
+   * l'integrite de l'historique financier. Supprime aussi le User associe
+   * (sinon un compte INVITED orphelin bloquerait toute recreation future
+   * avec le meme email - cf. verification d'unicite dans create()).
+   */
+  async remove(id: string, actor: AuthenticatedUser) {
+    const client = await this.prisma.clientProfile.findUnique({
+      where: { id },
+      include: { _count: { select: { projects: true } } },
+    });
+    if (!client) throw AppException.notFound('Client');
+
+    if (client._count.projects > 0) {
+      throw AppException.badRequest(
+        'CLIENT_HAS_PROJECTS',
+        'Ce client a des projets associés et ne peut pas être supprimé.',
+      );
+    }
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.clientProfile.delete({ where: { id } });
+      await tx.user.delete({ where: { id: client.userId } });
+
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          userRole: actor.role,
+          action: 'DELETE_SOFT',
+          entityType: 'Client',
+          entityId: id,
+          oldValue: { firstName: client.firstName, lastName: client.lastName },
+          reason: 'Suppression du client par le superadmin (aucun projet associé)',
+        },
+        tx,
+      );
+    });
+
+    return { removed: true };
+  }
 }

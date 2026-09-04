@@ -46,4 +46,6 @@ export const clientsService = {
   suspend: (id: string) => api.patch<ClientProfile>(`/clients/${id}/suspend`),
 
   reactivate: (id: string) => api.patch<ClientProfile>(`/clients/${id}/reactivate`),
+
+  remove: (id: string) => api.delete<{ removed: boolean }>(`/clients/${id}`),
 };

@@ -1,9 +1,12 @@
-// frontend/src/app/(app)/clients/[id]/page.tsx - v1.1
-// Ajout d'un bouton "Modifier" ouvrant EditClientDialog, pour que le
-// superadmin puisse renseigner/corriger profession, adresse et les autres
-// champs de UpdateClientDto directement depuis la fiche client (jusque-la
-// seul le client lui-meme pouvait editer une partie de ces infos via
-// PATCH /clients/me). Aucun changement sur suspendre/reactiver.
+// frontend/src/app/(app)/clients/[id]/page.tsx - v1.2
+// Ajout du bouton "Supprimer" (superadmin), visible uniquement quand le
+// client n'a aucun projet (projects.meta.total === 0) - le backend
+// revalide cette meme regle independamment (clients.service.ts::remove),
+// donc masquer le bouton n'est qu'un confort d'UI, pas la seule
+// protection. Confirmation obligatoire via <ConfirmDialog> avant l'appel
+// (action irreversible - suppression definitive du client ET de son
+// compte utilisateur associe). Redirection vers /clients apres succes.
+// Aucun changement sur Modifier/Suspendre/Reactiver.
 
 'use client';
 
@@ -11,7 +14,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, Pencil } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { clientsService } from '@/services/clients.service';
 import { useProjects } from '@/hooks/use-projects';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
 import { EditClientDialog } from '@/components/clients/edit-client-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { userStatusMeta, projectStatusMeta, formatMoney, formatDate } from '@/lib/format';
 import { ApiError } from '@/lib/api-client';
 import Link from 'next/link';
@@ -29,6 +33,7 @@ function ClientDetailPageContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const { data: client, isLoading, isError } = useQuery({
     queryKey: ['clients', params.id],
@@ -54,8 +59,23 @@ function ClientDetailPageContent() {
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Action impossible.'),
   });
 
+  const removeMutation = useMutation({
+    mutationFn: () => clientsService.remove(params.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      toast.success('Client supprimé.');
+      router.push('/clients');
+    },
+    onError: (error) => {
+      toast.error(error instanceof ApiError ? error.message : 'Suppression impossible.');
+      setDeleteOpen(false);
+    },
+  });
+
   if (isLoading) return <PageSpinner />;
   if (isError || !client) return <ErrorState message="Impossible de charger ce client." />;
+
+  const canDelete = projects?.meta.total === 0;
 
   return (
     <div>
@@ -74,7 +94,7 @@ function ClientDetailPageContent() {
             {!client.isActive && <StatusBadge label="Suspendu par l'admin" tone="clay" />}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4" /> Modifier
           </Button>
@@ -85,6 +105,11 @@ function ClientDetailPageContent() {
           ) : (
             <Button size="sm" onClick={() => reactivateMutation.mutate()} loading={reactivateMutation.isPending}>
               <CheckCircle2 className="h-4 w-4" /> Reactiver
+            </Button>
+          )}
+          {canDelete && (
+            <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="h-4 w-4" /> Supprimer
             </Button>
           )}
         </div>
@@ -129,6 +154,17 @@ function ClientDetailPageContent() {
       </div>
 
       <EditClientDialog open={editOpen} onClose={() => setEditOpen(false)} client={client} />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={() => removeMutation.mutate()}
+        title="Supprimer ce client ?"
+        description={`Cette action est définitive : ${client.firstName} ${client.lastName} et son compte seront supprimés. Cette opération est irréversible.`}
+        confirmLabel="Supprimer définitivement"
+        danger
+        loading={removeMutation.isPending}
+      />
     </div>
   );
 }

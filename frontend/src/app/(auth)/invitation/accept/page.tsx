@@ -17,7 +17,7 @@ import { PageSpinner } from '@/components/ui/misc';
 
 const schema = z
   .object({
-    password: z.string().min(8, 'Au moins 8 caracteres'),
+    password: z.string().min(8, 'Au moins 8 caractères'),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -49,7 +49,7 @@ function AcceptInvitationPageContent() {
           <CheckCircle2 className="h-6 w-6" />
         </div>
         <h1 className="mt-4 font-display text-xl font-semibold text-ink-900">Compte activé</h1>
-        <p className="mt-2 text-sm text-ink-500">Votre mot de passe a été defini avec succès. Vous pouvez maintenant vous connecter.</p>
+        <p className="mt-2 text-sm text-ink-500">Votre mot de passe a été défini avec succès. Vous pouvez maintenant vous connecter.</p>
         <Button className="mt-6 w-full" onClick={() => router.push('/login')}>
           Aller à la connexion
         </Button>
