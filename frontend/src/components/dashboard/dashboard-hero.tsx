@@ -1,20 +1,24 @@
-// ============================================================================
-// dashboard-hero.tsx - v1.5
-// Fix de contraste : la derniere teinte du degrade de solde ("#1B4332",
-// vert sapin tres sombre) etait quasi invisible sur le fond navy du hero
-// (signale par le client - solde supervisor illisible). Remplacee par l'or
-// deja utilise ailleurs dans ce meme composant (eyebrow, boutons d'action,
-// halo de fond) - couleur deja eprouvee pour sa lisibilite sur ce degrade
-// bleu marine precis, et qui "va avec le bleu" comme demande, plutot
-// qu'une nouvelle couleur au hasard. Reste du degrade (rouge -> orange ->
-// jaune) inchange, seule la teinte du palier le plus eleve (>50M) change.
-// ============================================================================
+// dashboard-hero.tsx - v1.6
+// Fix debordement du solde principal : "break-all" laissait le navigateur
+// couper le texte n'importe ou, y compris en plein milieu de "GNF" pour
+// les grands soldes (signale par capture - "67 474 000 GN/F" sur deux
+// lignes). Aucune taille de police fixe ne peut garantir une seule ligne
+// pour un montant de longueur non bornee (GNF monte vite a 8-9 chiffres),
+// donc le solde principal passe par <AutoFitBalance> : il mesure la
+// largeur reelle et reduit la police jusqu'a tenir sur une ligne, avec un
+// plancher de lisibilite (20px). Tailles max reprises de l'existant
+// (text-4xl mobile = 36px, text-5xl desktop = 48px) - AutoFitBalance
+// reduit automatiquement en dessous si le conteneur est plus etroit sur
+// mobile, donc plus besoin du couple text-4xl/sm:text-5xl separe. Reste
+// du fichier (degrade de couleur, masquage, selecteur de chantier, stats,
+// actions) inchange.
 
 'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
 import { Eye, EyeOff, type LucideIcon } from 'lucide-react';
+import { AutoFitBalance } from '@/components/ui/auto-fit-balance';
 
 export interface DashboardHeroStat {
   label: string;
@@ -154,14 +158,18 @@ export function DashboardHero({
                 </button>
               )}
             </div>
-            <p
-              className={`mt-1 break-all font-ledger text-4xl font-bold tracking-tight sm:text-5xl ${
-                dynamicColor ? '' : primaryTone === 'negative' && !masked ? 'text-[#FFB4A2]' : 'text-white'
-              }`}
-              style={dynamicColor ? { color: dynamicColor } : undefined}
-            >
-              {displayValue}
-            </p>
+            <div className="mt-1">
+              <AutoFitBalance
+                maxSize={48}
+                minSize={20}
+                className={`font-ledger font-bold tracking-tight ${
+                  dynamicColor ? '' : primaryTone === 'negative' && !masked ? 'text-[#FFB4A2]' : 'text-white'
+                }`}
+                style={dynamicColor ? { color: dynamicColor } : undefined}
+              >
+                {displayValue}
+              </AutoFitBalance>
+            </div>
           </div>
         </div>
 

@@ -1,29 +1,38 @@
-// ============================================================================
-// app/(app)/projects/[id]/layout.tsx - v1.2
-// Ajout des onglets Documents / Superviseurs / Anomalies / Reglages a la
-// barre d'onglets desktop - ils n'existaient jusqu'ici que dans le tiroir
-// mobile (section "Chantier en cours" de topbar.tsx v1.2), rendant ces
-// pages inaccessibles depuis un ecran large. Meme gating par role que
-// topbar.tsx, pour rester coherent entre les deux surfaces :
-// - Documents : tous roles
-// - Superviseurs : Client ou Superadmin
-// - Anomalies : Client uniquement
-// - Reglages (du projet) : Client ou Superadmin
-// Barre d'onglets deja en overflow-x-auto (gere le cas ou 8 onglets
-// depassent la largeur sur les ecrans plus etroits). Aucun changement sur
-// l'en-tete navy, les telechargements PDF/Excel, ou le garde de chargement.
-// ============================================================================
+// app/(app)/projects/[id]/layout.tsx - v1.3
+// Remplacement de la barre d'onglets horizontale par une grille de cartes
+// cliquables sur mobile uniquement, via <ProjectTabCards>. La barre
+// desktop d'origine est conservee a l'identique, simplement masquee sous
+// sm: (hidden sm:block) au lieu d'etre toujours visible - bascule geree
+// en pur CSS/Tailwind, sans detection JS de device, comme le reste du
+// fichier (cf. les classes sm:flex-row / sm:text-2xl plus bas). Chaque
+// onglet porte desormais une icone (reprises des memes icones que la
+// page Apercu : ArrowDownToLine/ArrowUpFromLine/Wallet) pour la grille
+// mobile. Aucun changement sur le gating par role, l'en-tete navy, les
+// telechargements PDF/Excel, ou le garde de chargement.
 
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
-import { ArrowLeft, Download, FileSpreadsheet } from 'lucide-react';
+import {
+  ArrowLeft,
+  Download,
+  FileSpreadsheet,
+  LayoutGrid,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Wallet,
+  FolderOpen,
+  Users,
+  AlertTriangle,
+  Settings,
+} from 'lucide-react';
 import { useProject } from '@/hooks/use-projects';
 import { useAuth } from '@/hooks/use-auth';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
+import { ProjectTabCards } from '@/components/projects/project-tab-cards';
 import { cn } from '@/lib/utils';
 import { formatMoney, projectStatusMeta } from '@/lib/format';
 import { reportsService } from '@/services/reports.service';
@@ -40,15 +49,20 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
 
   const base = `/projects/${params.id}`;
   const tabs = [
-    { label: 'Aperçu', href: base },
-    { label: 'Dépôts', href: `${base}/deposits` },
-    { label: 'Dépenses', href: `${base}/expenses` },
-    { label: 'Budgets', href: `${base}/budgets` },
-    { label: 'Documents', href: `${base}/documents` },
-    ...(isClient || isSuperadmin ? [{ label: 'Superviseurs', href: `${base}/supervisors` }] : []),
-    ...(isClient ? [{ label: 'Anomalies', href: `${base}/anomalies` }] : []),
-    ...(isClient || isSuperadmin ? [{ label: 'Réglages', href: `${base}/settings` }] : []),
+    { label: 'Aperçu', href: base, icon: LayoutGrid },
+    { label: 'Dépôts', href: `${base}/deposits`, icon: ArrowDownToLine },
+    { label: 'Dépenses', href: `${base}/expenses`, icon: ArrowUpFromLine },
+    { label: 'Budgets', href: `${base}/budgets`, icon: Wallet },
+    { label: 'Documents', href: `${base}/documents`, icon: FolderOpen },
+    ...(isClient || isSuperadmin ? [{ label: 'Superviseurs', href: `${base}/supervisors`, icon: Users }] : []),
+    ...(isClient ? [{ label: 'Anomalies', href: `${base}/anomalies`, icon: AlertTriangle }] : []),
+    ...(isClient || isSuperadmin ? [{ label: 'Réglages', href: `${base}/settings`, icon: Settings }] : []),
   ];
+
+  const tabsWithActive = tabs.map((tab) => ({
+    ...tab,
+    active: tab.href === base ? pathname === base : pathname.startsWith(tab.href),
+  }));
 
   const balance = parseFloat(project.wallet?.balance ?? '0');
 
@@ -119,23 +133,22 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
         </div>
       </div>
 
-      <div className="mb-6 overflow-x-auto border-b border-concrete">
+      <ProjectTabCards tabs={tabsWithActive} />
+
+      <div className="hidden sm:block mb-6 overflow-x-auto border-b border-concrete">
         <nav className="flex gap-1 whitespace-nowrap">
-          {tabs.map((tab) => {
-            const active = tab.href === base ? pathname === base : pathname.startsWith(tab.href);
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={cn(
-                  'border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
-                  active ? 'border-blueprint-600 text-blueprint-700' : 'border-transparent text-ink-500 hover:text-ink-800',
-                )}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
+          {tabsWithActive.map((tab) => (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={cn(
+                'border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
+                tab.active ? 'border-blueprint-600 text-blueprint-700' : 'border-transparent text-ink-500 hover:text-ink-800',
+              )}
+            >
+              {tab.label}
+            </Link>
+          ))}
         </nav>
       </div>
 

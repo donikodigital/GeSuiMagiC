@@ -1,3 +1,4 @@
+//backend/src/attachments/attachments.module.ts
 import { Module } from '@nestjs/common';
 import { AttachmentsController, AttachmentsService } from './attachments.controller';
 import { AuditModule } from '../audit/audit.module';

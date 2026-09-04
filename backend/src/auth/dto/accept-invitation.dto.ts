@@ -1,3 +1,4 @@
+//backend/src/auth/dto/accept-invitation.dto.ts
 import { IsString, MinLength } from 'class-validator';
 
 export class AcceptInvitationDto {

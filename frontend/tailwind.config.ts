@@ -1,3 +1,4 @@
+/*frontend/tailwind.config.ts*/
 import type { Config } from 'tailwindcss';
 
 /**
@@ -105,6 +106,15 @@ const config: Config = {
       },
       borderRadius: {
         card: '10px',
+      },
+      keyframes: {
+        'card-in': {
+          '0%': { opacity: '0', transform: 'translateY(8px) scale(0.97)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+      },
+      animation: {
+        'card-in': 'card-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both',
       },
     },
   },
