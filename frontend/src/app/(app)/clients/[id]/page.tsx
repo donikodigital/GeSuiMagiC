@@ -1,18 +1,14 @@
-// frontend/src/app/(app)/clients/[id]/page.tsx - v1.3
-// - Alignement force de Modifier/Suspendre(ou Reactiver)/Supprimer sur une
-//   seule ligne : chaque bouton passe en flex-1 (largeurs egales, libelle
-//   centre, whitespace-nowrap) plutot que flex-wrap qui les faisait
-//   passer sur 2 lignes des que "Supprimer" apparaissait (canDelete) sur
-//   mobile etroit - meme principe que les pastilles de categorie de
-//   AttachmentsSection v2.2, pour eviter tout retour a la ligne comme
-//   tout scroll horizontal.
-// - Badge(s) de statut (Invite / Suspendu par l'admin) deplaces au-dessus
-//   de l'email, alignes en haut a droite du bloc nom (avant : juste sous
-//   l'email).
-// - Nouveau bouton "Renvoyer le lien d'invitation", visible uniquement
-//   quand le compte est toujours au statut INVITED (l'invitation initiale
-//   peut avoir expire sans activation - demande superadmin suite a une
-//   reclamation client). Appelle PATCH /clients/:id/resend-invitation.
+// frontend/src/app/(app)/clients/[id]/page.tsx - v1.4
+// Refonte visuelle demandee : creation d'un hero (meme identite navy que
+// l'en-tete des pages projet dans layout.tsx - degrade + motif compass en
+// filigrane), avec avatar initiales, nom/email/badges regroupes, et les
+// 4 actions (Modifier/Suspendre-Reactiver/Renvoyer/Supprimer) transformees
+// en icones rondes + libelle, dans une barre d'actions translucide en bas
+// du hero plutot qu'en boutons texte separes. StatusBadge deja eprouve
+// sur fond navy ailleurs dans l'app (meme composant utilise tel quel dans
+// le hero du layout projet) - reutilise sans modification. Cartes
+// Informations/Projets en dessous inchangees. Aucun changement de
+// logique/mutations/endpoints par rapport a v1.3.
 // ============================================================================
 
 'use client';
@@ -21,19 +17,57 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, Pencil, Send, Trash2 } from 'lucide-react';
+import { Ban, CheckCircle2, Loader2, Pencil, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { clientsService } from '@/services/clients.service';
 import { useProjects } from '@/hooks/use-projects';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
 import { EditClientDialog } from '@/components/clients/edit-client-dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { userStatusMeta, projectStatusMeta, formatMoney, formatDate } from '@/lib/format';
+import { userStatusMeta, projectStatusMeta, formatMoney, formatDate, initials } from '@/lib/format';
 import { ApiError } from '@/lib/api-client';
 import Link from 'next/link';
 import { RequireRole } from '@/components/shared/require-role';
+import { cn } from '@/lib/utils';
+
+function HeroAction({
+  icon: Icon,
+  label,
+  onClick,
+  loading,
+  disabled,
+  tone = 'neutral',
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  tone?: 'neutral' | 'danger' | 'positive' | 'gold';
+}) {
+  const toneClasses: Record<string, string> = {
+    neutral: 'bg-white/10 text-white hover:bg-white/20',
+    danger: 'bg-[#FFB4A2]/15 text-[#FFB4A2] hover:bg-[#FFB4A2]/25',
+    positive: 'bg-[#8FE3B0]/15 text-[#8FE3B0] hover:bg-[#8FE3B0]/25',
+    gold: 'bg-[#C9A24A]/20 text-[#E9C878] hover:bg-[#C9A24A]/30',
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      className="flex flex-1 flex-col items-center gap-1.5 py-0.5 transition-opacity disabled:opacity-50"
+    >
+      <span className={cn('flex h-11 w-11 items-center justify-center rounded-full transition-colors', toneClasses[tone])}>
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+      </span>
+      <span className="text-[11px] font-medium text-white/70">{label}</span>
+    </button>
+  );
+}
 
 function ClientDetailPageContent() {
   const params = useParams<{ id: string }>();
@@ -97,55 +131,62 @@ function ClientDetailPageContent() {
         <ArrowLeft className="h-4 w-4" /> Retour
       </button>
 
-      <div className="mb-6">
-        <div className="flex items-start justify-between gap-3">
-          <h1 className="min-w-0 font-display text-2xl font-semibold text-ink-900">
-            {client.firstName} {client.lastName}
-          </h1>
-          <div className="flex shrink-0 flex-wrap justify-end gap-1.5 pt-1">
-            {client.user && <StatusBadge label={userStatusMeta[client.user.status].label} tone={userStatusMeta[client.user.status].tone} />}
-            {!client.isActive && <StatusBadge label="Suspendu par l'admin" tone="clay" />}
+      <div className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-[#0B1330] via-[#122057] to-[#1B2E6E] px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 200 200"
+          className="pointer-events-none absolute -right-8 -top-8 h-44 w-44 opacity-[0.08] sm:h-52 sm:w-52"
+        >
+          <circle cx="100" cy="100" r="80" fill="none" stroke="#E7D9AE" strokeWidth="1" strokeDasharray="2 6" />
+          <circle cx="100" cy="100" r="58" fill="none" stroke="#E7D9AE" strokeWidth="1" />
+        </svg>
+
+        <div className="relative flex items-start gap-3.5">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/10 font-display text-lg font-semibold text-white ring-1 ring-white/15">
+            {initials(client.firstName, client.lastName)}
+          </span>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h1 className="truncate font-display text-xl font-semibold text-white sm:text-2xl">
+              {client.firstName} {client.lastName}
+            </h1>
+            <p className="mt-0.5 truncate text-sm text-white/60">{client.user?.email}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {client.user && <StatusBadge label={userStatusMeta[client.user.status].label} tone={userStatusMeta[client.user.status].tone} />}
+              {!client.isActive && <StatusBadge label="Suspendu par l'admin" tone="clay" />}
+            </div>
           </div>
         </div>
-        <p className="mt-1 truncate text-sm text-ink-500">{client.user?.email}</p>
 
-        <div className="mt-4 flex gap-2">
-          <Button variant="outline" size="sm" className="flex-1 whitespace-nowrap" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-4 w-4" /> Modifier
-          </Button>
+        <div className="relative mt-5 flex items-stretch gap-1 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-3 backdrop-blur-sm">
+          <HeroAction icon={Pencil} label="Modifier" onClick={() => setEditOpen(true)} />
           {client.isActive ? (
-            <Button
-              variant="danger"
-              size="sm"
-              className="flex-1 whitespace-nowrap"
+            <HeroAction
+              icon={Ban}
+              label="Suspendre"
+              tone="danger"
               onClick={() => suspendMutation.mutate()}
               loading={suspendMutation.isPending}
-            >
-              <Ban className="h-4 w-4" /> Suspendre
-            </Button>
+            />
           ) : (
-            <Button size="sm" className="flex-1 whitespace-nowrap" onClick={() => reactivateMutation.mutate()} loading={reactivateMutation.isPending}>
-              <CheckCircle2 className="h-4 w-4" /> Réactiver
-            </Button>
+            <HeroAction
+              icon={CheckCircle2}
+              label="Réactiver"
+              tone="positive"
+              onClick={() => reactivateMutation.mutate()}
+              loading={reactivateMutation.isPending}
+            />
           )}
-          {canDelete && (
-            <Button variant="danger" size="sm" className="flex-1 whitespace-nowrap" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="h-4 w-4" /> Supprimer
-            </Button>
+          {isInvitePending && (
+            <HeroAction
+              icon={Send}
+              label="Renvoyer"
+              tone="gold"
+              onClick={() => resendInvitationMutation.mutate()}
+              loading={resendInvitationMutation.isPending}
+            />
           )}
+          {canDelete && <HeroAction icon={Trash2} label="Supprimer" tone="danger" onClick={() => setDeleteOpen(true)} />}
         </div>
-
-        {isInvitePending && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2 w-full border-safety-300 text-safety-500 hover:bg-safety-50"
-            onClick={() => resendInvitationMutation.mutate()}
-            loading={resendInvitationMutation.isPending}
-          >
-            <Send className="h-4 w-4" /> Renvoyer le lien d&apos;invitation
-          </Button>
-        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
