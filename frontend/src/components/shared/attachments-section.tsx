@@ -227,7 +227,7 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-concrete-light text-ink-400">
             <Paperclip className="h-4 w-4" />
           </span>
-          <p className="text-sm text-ink-400">Aucun document pour l'instant.</p>
+          <p className="text-sm text-ink-400">Aucun document pour l&apos;instant.</p>
         </div>
       )}
     </div>
