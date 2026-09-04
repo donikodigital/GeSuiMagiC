@@ -1,6 +1,7 @@
-// frontend/src/services/projects.service.ts - v1.1
-// Ajout de autoApproveExpenses et expenseApprovalThreshold a
-// CreateProjectPayload, pour les rendre choisissables des la creation.
+// frontend/src/services/projects.service.ts - v1.2
+// Ajout de remove() pour la suppression definitive d'un projet (bouton
+// reglages CLIENT/SUPERADMIN, visible tant qu'aucune donnee financiere
+// n'est enregistree - condition revalidee cote backend).
 
 import { api } from '@/lib/api-client';
 import type { FinancialSummary, PaginatedResponse, Project, ProjectStatus } from '@/types/models';
@@ -66,4 +67,6 @@ export const projectsService = {
   assignSupervisor: (id: string, supervisorId: string) => api.post(`/projects/${id}/supervisors`, { supervisorId }),
 
   revokeSupervisor: (id: string, supervisorId: string) => api.delete(`/projects/${id}/supervisors/${supervisorId}`),
+
+  remove: (id: string) => api.delete<{ removed: boolean }>(`/projects/${id}`),
 };

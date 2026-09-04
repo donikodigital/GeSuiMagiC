@@ -104,4 +104,12 @@ export class ProjectsController {
   async revokeSupervisor(@Param('id') id: string, @Param('supervisorId') supervisorId: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.projectsService.revokeSupervisor(id, supervisorId, actor);
   }
+
+  @Delete(':id')
+  @UseGuards(ProjectAccessGuard)
+  @ProjectParam('id')
+  @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
+  async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.projectsService.remove(id, actor);
+  }
 }

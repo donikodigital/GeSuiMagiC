@@ -1,36 +1,30 @@
-// frontend/src/app/(app)/projects/[id]/settings/page.tsx - v1.4
-// Modernisation visuelle (sur demande - page jugee "tres basique") :
-// - Statut du chantier : le <Select> natif est remplace par une grille de
-//   pastilles cliquables colorees selon le tone de chaque statut
-//   (projectStatusMeta[s].tone, memes 5 tons que STATUS_BAR_GRADIENT dans
-//   client-dashboard.tsx : moss/safety/clay/ink/blueprint). La pastille
-//   selectionnee EST l'apercu (elle prend directement la couleur du
-//   statut), donc la ligne "Apercu" + StatusBadge separee disparait -
-//   redondante avec ce nouveau rendu. setStatus/mutation inchanges.
-// - Chaque carte recoit un bandeau degrade en tete (meme pattern que les
-//   cartes de chantier du dashboard), dynamique pour le statut (suit la
-//   couleur du statut actuellement selectionne), fixe blueprint pour la
-//   carte financiere.
-// - Indicateur "modification non enregistree" : ajout d'un point anime
-//   (meme langage que les badges d'attente ailleurs dans l'app) en plus
-//   du texte existant, sur les deux cartes.
-// - Champ Budget : icone Wallet integree, comme les champs de montant
-//   ailleurs dans l'app. Suffixe devise en pastille arrondie plutot
-//   qu'en simple texte colle a droite.
-// - Entree animee (animate-card-in, deja utilise pour ProjectTabCards),
-//   legerement decalee entre les deux cartes.
-// Aucun changement de logique/mutations/endpoints/roles - uniquement le
-// balisage et les classes.
+// frontend/src/app/(app)/projects/[id]/settings/page.tsx - v1.5
+// Ajout de la carte "Zone sensible" : bouton de suppression definitive du
+// projet, visible pour CLIENT et SUPERADMIN (memes roles que le reste de
+// cette page, deja garde par RequireRole) UNIQUEMENT si le projet n'a
+// aucun depot ni aucune depense enregistre. Verification faite via
+// useDeposits/useExpenses avec limit:1 (on ne lit que meta.total, pas les
+// items) - meme critere exact que ProjectsService.remove cote backend
+// (compte les lignes quel que soit leur statut), plutot que le resume
+// financier qui ne reflete que les montants deja valides et masquerait
+// des depots/depenses encore en attente. Tant que l'un des deux comptes
+// est en cours de chargement, le bouton reste cache par prudence (pas de
+// canDelete=true premature). Confirmation obligatoire via ConfirmDialog
+// (meme composant que la suppression de client) - action irreversible,
+// redirige vers /projects apres succes. Aucun changement sur
+// ProjectStatusCard / ProjectFinancialsCard.
 // ============================================================================
 
 'use client';
 
 import * as React from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { Check, Settings2, ShieldCheck, Wallet } from 'lucide-react';
+import { Check, Settings2, ShieldCheck, Trash2, Wallet } from 'lucide-react';
 import { useProject } from '@/hooks/use-projects';
+import { useDeposits } from '@/hooks/use-deposits';
+import { useExpenses } from '@/hooks/use-expenses';
 import { useAuth } from '@/hooks/use-auth';
 import { projectsService } from '@/services/projects.service';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -38,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { FormField, Input } from '@/components/ui/input';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ApiError } from '@/lib/api-client';
 import { RequireRole } from '@/components/shared/require-role';
 import { projectStatusMeta } from '@/lib/format';
@@ -60,9 +55,14 @@ const TONE_STYLES: Record<string, { bar: string; chipActive: string }> = {
   blueprint: { bar: 'from-blueprint-500 to-blueprint-300', chipActive: 'border-blueprint-600 bg-blueprint-600 text-white' },
 };
 
-function SectionIcon({ children }: { children: React.ReactNode }) {
+function SectionIcon({ children, tone = 'blueprint' }: { children: React.ReactNode; tone?: 'blueprint' | 'clay' }) {
   return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blueprint-50 text-blueprint-600 ring-1 ring-blueprint-100">
+    <div
+      className={cn(
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1',
+        tone === 'clay' ? 'bg-clay-50 text-clay-600 ring-clay-100' : 'bg-blueprint-50 text-blueprint-600 ring-blueprint-100',
+      )}
+    >
       {children}
     </div>
   );
@@ -265,6 +265,75 @@ function ProjectFinancialsCard({ project, projectId }: { project: NonNullable<Re
   );
 }
 
+function ProjectDangerZoneCard({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+
+  // Meme critere exact que ProjectsService.remove cote backend : compte
+  // TOUS les depots/depenses (n'importe quel statut), pas seulement ceux
+  // valides - limit:1 car seul meta.total nous interesse ici.
+  const { data: deposits, isLoading: depositsLoading } = useDeposits(projectId, { limit: 1 });
+  const { data: expenses, isLoading: expensesLoading } = useExpenses(projectId, { limit: 1 });
+
+  const checking = depositsLoading || expensesLoading;
+  const canDelete = !checking && (deposits?.meta.total ?? 0) === 0 && (expenses?.meta.total ?? 0) === 0;
+
+  const removeMutation = useMutation({
+    mutationFn: () => projectsService.remove(projectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Projet supprimé.');
+      router.push('/projects');
+    },
+    onError: (error) => {
+      toast.error(error instanceof ApiError ? error.message : 'Suppression impossible.');
+      setConfirmOpen(false);
+    },
+  });
+
+  if (checking || !canDelete) return null;
+
+  return (
+    <Card className="animate-card-in overflow-hidden border-clay-100" style={{ animationDelay: '160ms' }}>
+      <div className="h-1 w-full bg-gradient-to-r from-clay-500 to-clay-300" />
+      <CardHeader>
+        <div className="flex items-start gap-3">
+          <SectionIcon tone="clay">
+            <Trash2 className="h-4 w-4" />
+          </SectionIcon>
+          <div>
+            <CardTitle>Zone sensible</CardTitle>
+            <CardDescription>
+              Ce chantier n&apos;a encore aucun dépôt ni aucune dépense enregistré. Il peut donc être supprimé
+              définitivement. Cette option disparaît dès la première opération financière.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-clay-100 bg-clay-50/50 px-4 py-3">
+          <p className="text-xs text-ink-500">Cette action est définitive et ne peut pas être annulée.</p>
+          <Button variant="danger" size="sm" onClick={() => setConfirmOpen(true)}>
+            <Trash2 className="h-4 w-4" /> Supprimer le projet
+          </Button>
+        </div>
+      </CardContent>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={() => removeMutation.mutate()}
+        title="Supprimer ce projet ?"
+        description={`« ${projectName} » sera supprimé définitivement, avec ses documents et ses réglages. Cette opération est irréversible.`}
+        confirmLabel="Supprimer définitivement"
+        danger
+        loading={removeMutation.isPending}
+      />
+    </Card>
+  );
+}
+
 function ProjectSettingsPageContent() {
   const params = useParams<{ id: string }>();
   const { data: project, isLoading, isError } = useProject(params.id);
@@ -276,6 +345,7 @@ function ProjectSettingsPageContent() {
     <div className="mx-auto max-w-lg space-y-6">
       <ProjectStatusCard projectId={params.id} currentStatus={project.status} />
       <ProjectFinancialsCard project={project} projectId={params.id} />
+      <ProjectDangerZoneCard projectId={params.id} projectName={project.name} />
     </div>
   );
 }

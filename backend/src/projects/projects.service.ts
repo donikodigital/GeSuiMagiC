@@ -1,14 +1,22 @@
-// backend/src/projects/projects.service.ts - v1.2
-// create() transmet desormais autoApproveExpenses et expenseApprovalThreshold
-// si fournis par le formulaire de creation - la valeur Prisma par defaut ne
-// s'applique plus que si le champ est explicitement omis (filet de securite
-// technique, plus une valeur figee subie).
+// backend/src/projects/projects.service.ts - v1.4
+// Injection de StorageService (nouveau constructeur) pour nettoyer les
+// fichiers physiques sur R2 lors de remove() - avant, seules les lignes
+// Attachment en base etaient supprimees, laissant les fichiers orphelins
+// sur le bucket. On recupere la liste des attachments du projet AVANT la
+// transaction (deleteByUrl fait un appel reseau externe, a garder hors
+// transaction DB comme le fait deja AttachmentsService.remove), puis on
+// appelle deleteByUrl pour chacun juste avant de commit la suppression
+// des lignes correspondantes. deleteByUrl avale deja ses propres erreurs
+// (voir storage.service.ts - log un warning et continue) donc un fichier
+// introuvable cote R2 ne bloque pas la suppression du projet.
+// ============================================================================
 
 import { Injectable } from '@nestjs/common';
 import { Prisma, ProjectStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { AuditService } from '../audit/audit.service';
+import { StorageService } from '../storage/storage.service';
 import { AppException } from '../common/exceptions/app.exception';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
@@ -23,6 +31,7 @@ export class ProjectsService {
     private readonly prisma: PrismaService,
     private readonly wallets: WalletsService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
 
   async create(dto: CreateProjectDto, clientId: string, actor: AuthenticatedUser) {
@@ -246,5 +255,59 @@ export class ProjectsService {
       where: { projectId, status: 'ACTIVE' },
       include: { supervisor: true },
     });
+  }
+
+  /**
+   * Suppression definitive d'un projet (bouton reglages - visible cote
+   * front pour CLIENT et SUPERADMIN, uniquement tant que le projet n'a
+   * aucune donnee financiere enregistree). Verification refaite ici cote
+   * serveur : compte les Deposit/Expense lies au projet, quel que soit
+   * leur statut - jamais se fier au seul masquage du bouton. Recupere les
+   * attachments AVANT la transaction pour nettoyer les fichiers R2 (appel
+   * reseau externe, ne doit pas etre dans la transaction DB).
+   */
+  async remove(id: string, actor: AuthenticatedUser) {
+    const project = await this.prisma.project.findUnique({ where: { id } });
+    if (!project) throw AppException.notFound('Projet');
+
+    const [depositCount, expenseCount] = await Promise.all([
+      this.prisma.deposit.count({ where: { projectId: id } }),
+      this.prisma.expense.count({ where: { projectId: id } }),
+    ]);
+
+    if (depositCount > 0 || expenseCount > 0) {
+      throw AppException.badRequest(
+        'PROJECT_HAS_DATA',
+        'Ce projet a déjà des dépôts ou des dépenses enregistrés et ne peut plus être supprimé.',
+      );
+    }
+
+    const attachments = await this.prisma.attachment.findMany({ where: { projectId: id }, select: { fileUrl: true } });
+    for (const attachment of attachments) {
+      await this.storage.deleteByUrl(attachment.fileUrl);
+    }
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.setting.deleteMany({ where: { projectId: id } });
+      await tx.projectSupervisor.deleteMany({ where: { projectId: id } });
+      await tx.attachment.deleteMany({ where: { projectId: id } });
+      await tx.wallet.deleteMany({ where: { projectId: id } });
+      await tx.project.delete({ where: { id } });
+
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          userRole: actor.role,
+          action: 'DELETE_SOFT',
+          entityType: 'Project',
+          entityId: id,
+          oldValue: { name: project.name, status: project.status },
+          reason: "Suppression du projet (aucune donnée financière enregistrée)",
+        },
+        tx,
+      );
+    });
+
+    return { removed: true };
   }
 }
