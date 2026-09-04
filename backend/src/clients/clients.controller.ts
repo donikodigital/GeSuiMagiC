@@ -65,6 +65,12 @@ export class ClientsController {
     return this.clientsService.setSuspended(id, false, actor);
   }
 
+  @Patch(':id/resend-invitation')
+  @Roles(UserRole.SUPERADMIN)
+  async resendInvitation(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.clientsService.resendInvitation(id, actor);
+  }
+
   @Delete(':id')
   @Roles(UserRole.SUPERADMIN)
   async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {

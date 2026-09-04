@@ -1,12 +1,19 @@
-// frontend/src/app/(app)/clients/[id]/page.tsx - v1.2
-// Ajout du bouton "Supprimer" (superadmin), visible uniquement quand le
-// client n'a aucun projet (projects.meta.total === 0) - le backend
-// revalide cette meme regle independamment (clients.service.ts::remove),
-// donc masquer le bouton n'est qu'un confort d'UI, pas la seule
-// protection. Confirmation obligatoire via <ConfirmDialog> avant l'appel
-// (action irreversible - suppression definitive du client ET de son
-// compte utilisateur associe). Redirection vers /clients apres succes.
-// Aucun changement sur Modifier/Suspendre/Reactiver.
+// frontend/src/app/(app)/clients/[id]/page.tsx - v1.3
+// - Alignement force de Modifier/Suspendre(ou Reactiver)/Supprimer sur une
+//   seule ligne : chaque bouton passe en flex-1 (largeurs egales, libelle
+//   centre, whitespace-nowrap) plutot que flex-wrap qui les faisait
+//   passer sur 2 lignes des que "Supprimer" apparaissait (canDelete) sur
+//   mobile etroit - meme principe que les pastilles de categorie de
+//   AttachmentsSection v2.2, pour eviter tout retour a la ligne comme
+//   tout scroll horizontal.
+// - Badge(s) de statut (Invite / Suspendu par l'admin) deplaces au-dessus
+//   de l'email, alignes en haut a droite du bloc nom (avant : juste sous
+//   l'email).
+// - Nouveau bouton "Renvoyer le lien d'invitation", visible uniquement
+//   quand le compte est toujours au statut INVITED (l'invitation initiale
+//   peut avoir expire sans activation - demande superadmin suite a une
+//   reclamation client). Appelle PATCH /clients/:id/resend-invitation.
+// ============================================================================
 
 'use client';
 
@@ -14,7 +21,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, Pencil, Send, Trash2 } from 'lucide-react';
 import { clientsService } from '@/services/clients.service';
 import { useProjects } from '@/hooks/use-projects';
 import { Card, CardContent } from '@/components/ui/card';
@@ -72,10 +79,17 @@ function ClientDetailPageContent() {
     },
   });
 
+  const resendInvitationMutation = useMutation({
+    mutationFn: () => clientsService.resendInvitation(params.id),
+    onSuccess: () => toast.success("Lien d'invitation renvoyé."),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : "Impossible de renvoyer l'invitation."),
+  });
+
   if (isLoading) return <PageSpinner />;
   if (isError || !client) return <ErrorState message="Impossible de charger ce client." />;
 
   const canDelete = projects?.meta.total === 0;
+  const isInvitePending = client.user?.status === 'INVITED';
 
   return (
     <div>
@@ -83,36 +97,55 @@ function ClientDetailPageContent() {
         <ArrowLeft className="h-4 w-4" /> Retour
       </button>
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-semibold text-ink-900">
+      <div className="mb-6">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="min-w-0 font-display text-2xl font-semibold text-ink-900">
             {client.firstName} {client.lastName}
           </h1>
-          <p className="mt-1 text-sm text-ink-500">{client.user?.email}</p>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="flex shrink-0 flex-wrap justify-end gap-1.5 pt-1">
             {client.user && <StatusBadge label={userStatusMeta[client.user.status].label} tone={userStatusMeta[client.user.status].tone} />}
             {!client.isActive && <StatusBadge label="Suspendu par l'admin" tone="clay" />}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+        <p className="mt-1 truncate text-sm text-ink-500">{client.user?.email}</p>
+
+        <div className="mt-4 flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1 whitespace-nowrap" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4" /> Modifier
           </Button>
           {client.isActive ? (
-            <Button variant="danger" size="sm" onClick={() => suspendMutation.mutate()} loading={suspendMutation.isPending}>
+            <Button
+              variant="danger"
+              size="sm"
+              className="flex-1 whitespace-nowrap"
+              onClick={() => suspendMutation.mutate()}
+              loading={suspendMutation.isPending}
+            >
               <Ban className="h-4 w-4" /> Suspendre
             </Button>
           ) : (
-            <Button size="sm" onClick={() => reactivateMutation.mutate()} loading={reactivateMutation.isPending}>
-              <CheckCircle2 className="h-4 w-4" /> Reactiver
+            <Button size="sm" className="flex-1 whitespace-nowrap" onClick={() => reactivateMutation.mutate()} loading={reactivateMutation.isPending}>
+              <CheckCircle2 className="h-4 w-4" /> Réactiver
             </Button>
           )}
           {canDelete && (
-            <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+            <Button variant="danger" size="sm" className="flex-1 whitespace-nowrap" onClick={() => setDeleteOpen(true)}>
               <Trash2 className="h-4 w-4" /> Supprimer
             </Button>
           )}
         </div>
+
+        {isInvitePending && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2 w-full border-safety-300 text-safety-500 hover:bg-safety-50"
+            onClick={() => resendInvitationMutation.mutate()}
+            loading={resendInvitationMutation.isPending}
+          >
+            <Send className="h-4 w-4" /> Renvoyer le lien d&apos;invitation
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

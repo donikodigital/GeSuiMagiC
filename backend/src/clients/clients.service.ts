@@ -207,4 +207,38 @@ export class ClientsService {
 
     return { removed: true };
   }
+
+  /**
+   * Renvoie le lien d'invitation (demande superadmin - bouton visible
+   * uniquement pendant que le compte est toujours au statut INVITED,
+   * typiquement suite a une reclamation client apres expiration du
+   * premier lien). Reutilise authService.createInvitation, la meme
+   * methode que create() - donc doit generer un nouveau token cote
+   * AuthService (a verifier si l'ancien token n'est pas deja invalide
+   * naturellement par expiration).
+   */
+  async resendInvitation(id: string, actor: AuthenticatedUser) {
+    const client = await this.prisma.clientProfile.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, status: true } } },
+    });
+    if (!client) throw AppException.notFound('Client');
+
+    if (client.user.status !== 'INVITED') {
+      throw AppException.badRequest('CLIENT_ALREADY_ACTIVE', 'Ce client a déjà activé son compte.');
+    }
+
+    await this.authService.createInvitation(client.user.id);
+
+    await this.audit.log({
+      userId: actor.userId,
+      userRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'Client',
+      entityId: id,
+      reason: "Renvoi du lien d'invitation par le superadmin (compte toujours au statut INVITED)",
+    });
+
+    return { sent: true };
+  }
 }

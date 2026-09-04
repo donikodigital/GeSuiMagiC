@@ -47,5 +47,7 @@ export const clientsService = {
 
   reactivate: (id: string) => api.patch<ClientProfile>(`/clients/${id}/reactivate`),
 
+  resendInvitation: (id: string) => api.patch<{ sent: boolean }>(`/clients/${id}/resend-invitation`),
+
   remove: (id: string) => api.delete<{ removed: boolean }>(`/clients/${id}`),
 };
