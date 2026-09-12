@@ -1,5 +1,8 @@
-// frontend/src/services/expenses.service.ts - v1.1
-// Ajout de update/remove/archive/unarchive, meme principe que deposits.service.ts.
+// frontend/src/services/expenses.service.ts - v1.2
+// Fix : remove() envoyait { data: { reason } } alors que api.delete() attend
+// le body directement en 2e argument (voir api-client.ts : delete: (path, body, options)).
+// Le motif de suppression arrivait donc cote serveur comme { data: { reason } }
+// au lieu de { reason } - corrige ici en passant { reason } directement.
 
 import { api } from '@/lib/api-client';
 import type { Expense, ExpensePaymentStatus, ExpenseStatus, PaginatedResponse } from '@/types/models';
@@ -77,7 +80,7 @@ export const expensesService = {
 
   update: (id: string, payload: UpdateExpensePayload) => api.patch<Expense>(`/expenses/${id}`, payload),
 
-  remove: (id: string, reason: string) => api.delete<Expense>(`/expenses/${id}`, { data: { reason } }),
+  remove: (id: string, reason: string) => api.delete<Expense>(`/expenses/${id}`, { reason }),
 
   archive: (id: string) => api.patch<Expense>(`/expenses/${id}/archive`),
 
