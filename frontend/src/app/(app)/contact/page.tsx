@@ -1,4 +1,4 @@
-// frontend/src/app/(app)/contact/page.tsx
+//frontend/src/app/(app)/contact/page.tsx
 'use client';
 
 import * as React from 'react';
@@ -95,9 +95,9 @@ function ContactPageContent() {
           currentUserId={user?.id}
           isSuperadmin={isSuperadmin}
           isReplying={replyMutation.isPending}
-          onReply={(body) => {
+          onReply={(body, recipientId) => {
             replyMutation.mutate(
-              { id: selected.id, body },
+              { id: selected.id, body, recipientId },
               {
                 onSuccess: (updated) => {
                   setSelected(updated);

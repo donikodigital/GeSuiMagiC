@@ -1,9 +1,4 @@
-// frontend/src/hooks/use-projects.ts - v1.2
-// Ajout de useUpdateProjectFinancials (budget + autoApproveExpenses +
-// expenseApprovalThreshold ensemble), utilise par la nouvelle page de
-// reglages projet. useUpdateProjectBudget est conserve tel quel pour la
-// carte "Budget" de l'apercu, qui ne touche qu'a ce seul champ.
-
+//frontend/src/hooks/use-projects.ts
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -107,9 +102,17 @@ export function useRevokeSupervisor(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (supervisorId: string) => projectsService.revokeSupervisor(projectId, supervisorId),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
-      toast.success('Affectation revoquee.');
+      queryClient.invalidateQueries({ queryKey: ['deposits'] });
+      const pending = result?.pendingDeposits ?? 0;
+      if (pending > 0) {
+        toast.warning(
+          `Affectation revoquee. ${pending} depot${pending > 1 ? 's' : ''} de ce superviseur ${pending > 1 ? 'restent' : 'reste'} en attente : pensez a ${pending > 1 ? 'les' : 'le'} valider ou rejeter.`,
+        );
+      } else {
+        toast.success('Affectation revoquee.');
+      }
     },
     onError: (error) => handleError(error, 'Impossible de revoquer cette affectation.'),
   });

@@ -28,6 +28,9 @@ export interface CreateClientPayload {
   };
 }
 
+/** Champs acceptes par PATCH /clients/:id (ni l'email ni le premier projet ne sont modifiables ici). */
+export type UpdateClientPayload = Partial<Omit<CreateClientPayload, 'email' | 'firstProject'>>;
+
 export const clientsService = {
   list: (page = 1, limit = 20, search?: string) =>
     api.get<PaginatedResponse<ClientProfile>>(`/clients?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
@@ -41,7 +44,7 @@ export const clientsService = {
 
   create: (payload: CreateClientPayload) => api.post<ClientProfile>('/clients', payload),
 
-  update: (id: string, payload: Partial<CreateClientPayload>) => api.patch<ClientProfile>(`/clients/${id}`, payload),
+  update: (id: string, payload: UpdateClientPayload) => api.patch<ClientProfile>(`/clients/${id}`, payload),
 
   suspend: (id: string) => api.patch<ClientProfile>(`/clients/${id}/suspend`),
 

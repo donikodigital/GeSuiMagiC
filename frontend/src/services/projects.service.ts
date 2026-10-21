@@ -1,8 +1,4 @@
-// frontend/src/services/projects.service.ts - v1.2
-// Ajout de remove() pour la suppression definitive d'un projet (bouton
-// reglages CLIENT/SUPERADMIN, visible tant qu'aucune donnee financiere
-// n'est enregistree - condition revalidee cote backend).
-
+//frontend/src/services/projects.service.ts
 import { api } from '@/lib/api-client';
 import type { FinancialSummary, PaginatedResponse, Project, ProjectStatus } from '@/types/models';
 
@@ -27,6 +23,15 @@ export interface CreateProjectPayload {
   expenseApprovalThreshold?: number;
   clientId?: string; // superadmin uniquement
 }
+
+/**
+ * Champs acceptes par PATCH /projects/:id. Budget, devise, seuil de validation
+ * et client passent par updateFinancials() / sont immuables : le backend
+ * rejette tout champ inconnu (400).
+ */
+export type UpdateProjectPayload = Partial<
+  Omit<CreateProjectPayload, 'budget' | 'currency' | 'estimatedCost' | 'autoApproveExpenses' | 'expenseApprovalThreshold' | 'clientId'>
+> & { progressPercent?: number };
 
 export interface ProjectFilters {
   page?: number;
@@ -55,7 +60,7 @@ export const projectsService = {
 
   create: (payload: CreateProjectPayload) => api.post<Project>('/projects', payload),
 
-  update: (id: string, payload: Partial<CreateProjectPayload>) => api.patch<Project>(`/projects/${id}`, payload),
+  update: (id: string, payload: UpdateProjectPayload) => api.patch<Project>(`/projects/${id}`, payload),
 
   updateFinancials: (id: string, payload: { budget?: number; currency?: string; autoApproveExpenses?: boolean; expenseApprovalThreshold?: number }) =>
     api.patch<Project>(`/projects/${id}/financials`, payload),
@@ -66,7 +71,9 @@ export const projectsService = {
 
   assignSupervisor: (id: string, supervisorId: string) => api.post(`/projects/${id}/supervisors`, { supervisorId }),
 
-  revokeSupervisor: (id: string, supervisorId: string) => api.delete(`/projects/${id}/supervisors/${supervisorId}`),
+  /** `pendingDeposits` : depots encore en attente de ce superviseur, a traiter par le client. */
+  revokeSupervisor: (id: string, supervisorId: string) =>
+    api.delete<{ pendingDeposits?: number }>(`/projects/${id}/supervisors/${supervisorId}`),
 
   remove: (id: string) => api.delete<{ removed: boolean }>(`/projects/${id}`),
 };

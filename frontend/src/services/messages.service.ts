@@ -1,4 +1,4 @@
-// frontend/src/services/messages.service.ts
+//frontend/src/services/messages.service.ts
 import { api } from '@/lib/api-client';
 import type { Message, MessageStatus, MessageType, PaginatedResponse } from '@/types/models';
 
@@ -33,7 +33,12 @@ export const messagesService = {
 
   create: (payload: CreateMessagePayload) => api.post<Message>('/messages', payload),
 
-  reply: (id: string, body: string) => api.post<Message>(`/messages/${id}/reply`, { body }),
+  /**
+   * `recipientId` (superadmin uniquement) : reponse PRIVEE a un seul utilisateur dans un fil de
+   * diffusion. Absent : reponse publique (diffusion) ou reponse a l'auteur du fil.
+   */
+  reply: (id: string, body: string, recipientId?: string) =>
+    api.post<Message>(`/messages/${id}/reply`, recipientId ? { body, recipientId } : { body }),
 
   updateStatus: (id: string, status: MessageStatus) => api.patch<Message>(`/messages/${id}/status`, { status }),
 

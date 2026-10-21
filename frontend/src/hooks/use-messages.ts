@@ -1,4 +1,4 @@
-// frontend/src/hooks/use-messages.ts
+//frontend/src/hooks/use-messages.ts
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,7 +41,7 @@ export function useCreateMessage() {
 export function useReplyMessage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: string }) => messagesService.reply(id, body),
+    mutationFn: ({ id, body, recipientId }: { id: string; body: string; recipientId?: string }) => messagesService.reply(id, body, recipientId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       toast.success('Reponse envoyee.');

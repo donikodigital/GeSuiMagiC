@@ -1,10 +1,11 @@
+//frontend/src/app/(app)/supervisors/[id]/page.tsx
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, Send } from 'lucide-react';
 import { supervisorsService } from '@/services/supervisors.service';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,10 +34,17 @@ function SupervisorDetailPageContent() {
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Action impossible.'),
   });
 
+  const resendMutation = useMutation({
+    mutationFn: () => supervisorsService.resendInvitation(params.id),
+    onSuccess: () => toast.success("Lien d'invitation renvoyé."),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : "Impossible de renvoyer l'invitation."),
+  });
+
   if (isLoading) return <PageSpinner />;
   if (isError || !supervisor) return <ErrorState message="Impossible de charger ce superviseur." />;
 
   const isSuspended = supervisor.user?.status === 'SUSPENDED';
+  const isInvitePending = supervisor.user?.status === 'INVITED';
 
   return (
     <div>
@@ -56,15 +64,22 @@ function SupervisorDetailPageContent() {
             </div>
           )}
         </div>
-        {isSuspended ? (
-          <Button size="sm" onClick={() => statusMutation.mutate('ACTIVE')} loading={statusMutation.isPending}>
-            <CheckCircle2 className="h-4 w-4" /> Réactiver
-          </Button>
-        ) : (
-          <Button variant="danger" size="sm" onClick={() => statusMutation.mutate('SUSPENDED')} loading={statusMutation.isPending}>
-            <Ban className="h-4 w-4" /> Suspendre
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {isInvitePending && (
+            <Button variant="secondary" size="sm" onClick={() => resendMutation.mutate()} loading={resendMutation.isPending}>
+              <Send className="h-4 w-4" /> Renvoyer l&apos;invitation
+            </Button>
+          )}
+          {isSuspended ? (
+            <Button size="sm" onClick={() => statusMutation.mutate('ACTIVE')} loading={statusMutation.isPending}>
+              <CheckCircle2 className="h-4 w-4" /> Réactiver
+            </Button>
+          ) : (
+            <Button variant="danger" size="sm" onClick={() => statusMutation.mutate('SUSPENDED')} loading={statusMutation.isPending}>
+              <Ban className="h-4 w-4" /> Suspendre
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

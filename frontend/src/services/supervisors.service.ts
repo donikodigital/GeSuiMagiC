@@ -1,6 +1,4 @@
-// frontend/src/services/supervisors.service.ts - v1.1
-// Ajout de me() et updateMe(), memes conventions que clientsService.
-
+//frontend/src/services/supervisors.service.ts
 import { api } from '@/lib/api-client';
 import type { PaginatedResponse, SupervisorProfile } from '@/types/models';
 
@@ -13,6 +11,9 @@ export interface CreateSupervisorPayload {
   phone?: string;
   notes?: string;
 }
+
+/** Champs acceptes par PATCH /supervisors/:id (l'email n'est pas modifiable). */
+export type UpdateSupervisorPayload = Partial<Omit<CreateSupervisorPayload, 'email'>>;
 
 export const supervisorsService = {
   list: (page = 1, limit = 20, search?: string) =>
@@ -27,8 +28,10 @@ export const supervisorsService = {
 
   create: (payload: CreateSupervisorPayload) => api.post<SupervisorProfile>('/supervisors', payload),
 
-  update: (id: string, payload: Partial<CreateSupervisorPayload>) => api.patch<SupervisorProfile>(`/supervisors/${id}`, payload),
+  update: (id: string, payload: UpdateSupervisorPayload) => api.patch<SupervisorProfile>(`/supervisors/${id}`, payload),
 
   setStatus: (id: string, status: 'ACTIVE' | 'SUSPENDED' | 'DISABLED') =>
     api.patch<SupervisorProfile>(`/supervisors/${id}/status`, { status }),
+
+  resendInvitation: (id: string) => api.patch<{ sent: boolean }>(`/supervisors/${id}/resend-invitation`),
 };

@@ -203,6 +203,36 @@ describe('MessagesService', () => {
       expect(prisma.user.findMany.mock.calls[0][0].where.role).toBe('CLIENT');
     });
 
+    it("reponse PRIVEE du superadmin a un seul client dans une diffusion : recipientId transmis, aucune diffusion groupee", async () => {
+      stubReadBack(message({ id: 'm-b', type: 'BROADCAST', senderId: 'u-admin', recipientId: null, sender: { role: 'SUPERADMIN' } }));
+      prisma.user.findUnique.mockResolvedValue({ id: 'u-a', email: 'a@c', role: 'CLIENT', clientProfile: null, supervisorProfile: null });
+
+      await service.reply('m-b', { body: 'Pour vous seul', recipientId: 'u-a' } as any, admin);
+
+      expect(prisma.message.create.mock.calls[0][0].data.recipientId).toBe('u-a');
+      // Aucune notification a l'ensemble des clients actifs.
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      const inputs = notifications.sendMany.mock.calls[0][0];
+      expect(inputs).toHaveLength(1);
+      expect(inputs[0].userId).toBe('u-a');
+    });
+
+    it("reponse privee du superadmin : refuse un destinataire inconnu ou superadmin", async () => {
+      stubReadBack(message({ id: 'm-b', type: 'BROADCAST', senderId: 'u-admin', recipientId: null, sender: { role: 'SUPERADMIN' } }));
+      prisma.user.findUnique.mockResolvedValue({ id: 'u-admin2', role: 'SUPERADMIN' });
+
+      await expect(service.reply('m-b', { body: 'x', recipientId: 'u-admin2' } as any, admin)).rejects.toMatchObject({ code: 'INVALID_RECIPIENT' });
+      expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+
+    it("un client ne peut pas choisir le destinataire de sa reponse : recipientId ignore", async () => {
+      stubReadBack(message({ id: 'm-b', type: 'BROADCAST', senderId: 'u-admin', recipientId: null, sender: { role: 'SUPERADMIN' } }));
+
+      await service.reply('m-b', { body: 'x', recipientId: 'u-b' } as any, clientA);
+
+      expect(prisma.message.create.mock.calls[0][0].data).toMatchObject({ recipientId: null, type: 'OTHER' });
+    });
+
     it('message introuvable', async () => {
       prisma.message.findUnique.mockResolvedValue(null);
 
