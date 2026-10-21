@@ -10,6 +10,7 @@ import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 
 function extractMeta(req: Request): RequestMeta {
@@ -33,10 +34,13 @@ export class AuthController {
     return { loggedOut: true };
   }
 
+  // Limite dediee : cette route est publique (le JWT de refresh la protege) et
+  // declenche des verifications argon2 couteuses.
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @UseGuards(JwtRefreshGuard)
   @Post('refresh')
-  async refresh(@Req() req: Request & { user: { userId: string; refreshToken: string } }) {
+  async refresh(@Req() req: Request & { user: { userId: string; refreshToken: string } }, @Body() _dto: RefreshTokenDto) {
     return this.authService.refresh(req.user.userId, req.user.refreshToken);
   }
 
@@ -64,6 +68,8 @@ export class AuthController {
     return { message: 'Mot de passe reinitialise avec succes.' };
   }
 
+  // Verifie l'ancien mot de passe (argon2) : meme protection anti force-brute qu'au login.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('change-password')
   async changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto, @Req() req: Request) {
     await this.authService.changePassword(user.userId, dto.currentPassword, dto.newPassword, extractMeta(req));

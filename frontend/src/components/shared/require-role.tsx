@@ -12,10 +12,17 @@ import type { UserRole } from '@/types/models';
  * reste appliquee par le backend (@Roles) - ce garde n'est qu'un confort
  * d'UX pour eviter un ecran d'erreur brut si quelqu'un navigue vers une
  * URL que son role ne peut pas utiliser (ex: /clients pour un superviseur).
+ *
+ * Sans session (une fois le store rehydrate), on redirige vers /login au
+ * lieu de laisser une page blanche.
  */
 export function RequireRole({ roles, children }: { roles: UserRole[]; children: React.ReactNode }) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hasHydrated } = useAuth();
+
+  React.useEffect(() => {
+    if (hasHydrated && !user) router.replace('/login');
+  }, [hasHydrated, user, router]);
 
   if (!user) return null;
 

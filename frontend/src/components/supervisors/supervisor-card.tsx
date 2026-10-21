@@ -1,4 +1,4 @@
-// frontend/src/components/supervisors/supervisor-card.tsx
+//frontend/src/components/supervisors/supervisor-card.tsx
 'use client';
 
 import Link from 'next/link';
@@ -18,8 +18,18 @@ export function SupervisorCard({ supervisor }: { supervisor: SupervisorProfile }
       className="group flex items-center gap-4 rounded-card border border-concrete bg-white p-4 shadow-card transition-all hover:-translate-y-0.5 hover:border-blueprint-200 hover:shadow-md active:translate-y-0 sm:p-5"
     >
       {supervisor.photoUrl ? (
+        // referrerPolicy : l'URL de la photo est externe, on ne lui transmet pas l'adresse de l'application.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={supervisor.photoUrl} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
+        <img
+          src={supervisor.photoUrl}
+          alt=""
+          width={44}
+          height={44}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          className="h-11 w-11 shrink-0 rounded-full object-cover"
+        />
       ) : (
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blueprint-50 font-display text-sm font-semibold text-blueprint-700">
           {initials(supervisor.firstName, supervisor.lastName)}

@@ -1,9 +1,18 @@
 //backend/prisma/seed.ts
 /**
- * Seed du catalogue initial (marche guinéen) - sections 21 a 31 du cahier des charges.
- * Idempotent : peut etre relance sans dupliquer (upsert par nom unique).
+ * Seed du catalogue GLOBAL initial (marche guinéen) - sections 21 a 31 du cahier des charges
+ * + creation du premier superadmin.
  *
- * Usage: npm run prisma:seed
+ * Idempotent : peut etre relance sans dupliquer. Les entrees globales ont
+ * `ownerClientId = null` ; comme PostgreSQL considere les NULL comme distincts
+ * dans un index unique, on ne peut pas utiliser `upsert` : on cherche puis on cree.
+ *
+ * SECURITE : aucun identifiant par defaut. SEED_SUPERADMIN_EMAIL et
+ * SEED_SUPERADMIN_PASSWORD sont OBLIGATOIRES a la creation du superadmin (avant,
+ * un email et un mot de passe etaient ecrits en dur dans le depot). Le mot de
+ * passe n'est jamais affiche.
+ *
+ * Usage: SEED_SUPERADMIN_EMAIL=... SEED_SUPERADMIN_PASSWORD=... npm run prisma:seed
  */
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
@@ -239,70 +248,84 @@ const CATALOG: { category: string; group: string; materials: string[] }[] = [
   },
 ];
 
-async function main() {
+/** Mot de passe du superadmin : 12 caracteres minimum, au moins une lettre et un chiffre. */
+function assertStrongPassword(password: string) {
+  if (password.length < 12 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    throw new Error('SEED_SUPERADMIN_PASSWORD doit contenir au moins 12 caracteres, dont une lettre et un chiffre.');
+  }
+}
+
+async function seedCatalogue() {
   console.log('Seed: unites...');
   const unitMap = new Map<string, string>();
   for (const u of UNITS) {
-    const unit = await prisma.unit.upsert({
-      where: { name: u.name },
-      update: { symbol: u.symbol },
-      create: { name: u.name, symbol: u.symbol },
-    });
+    const existing = await prisma.unit.findFirst({ where: { ownerClientId: null, name: u.name } });
+    const unit = existing
+      ? await prisma.unit.update({ where: { id: existing.id }, data: { symbol: u.symbol } })
+      : await prisma.unit.create({ data: { name: u.name, symbol: u.symbol, ownerClientId: null } });
     unitMap.set(u.name, unit.id);
   }
 
   console.log('Seed: categories et materiaux...');
+  const ensureCategory = async (name: string, group: string) => {
+    const existing = await prisma.expenseCategory.findFirst({ where: { ownerClientId: null, name } });
+    return existing
+      ? prisma.expenseCategory.update({ where: { id: existing.id }, data: { group } })
+      : prisma.expenseCategory.create({ data: { name, group, ownerClientId: null } });
+  };
+
   for (const entry of CATALOG) {
-    const category = await prisma.expenseCategory.upsert({
-      where: { name: entry.category },
-      update: { group: entry.group },
-      create: { name: entry.category, group: entry.group },
-    });
+    const category = await ensureCategory(entry.category, entry.group);
 
     for (const materialName of entry.materials) {
-      await prisma.material.upsert({
-        where: { name_categoryId: { name: materialName, categoryId: category.id } },
-        update: {},
-        create: { name: materialName, categoryId: category.id },
+      const existing = await prisma.material.findFirst({
+        where: { ownerClientId: null, categoryId: category.id, name: materialName },
+        select: { id: true },
       });
+      if (!existing) {
+        await prisma.material.create({ data: { name: materialName, categoryId: category.id, ownerClientId: null } });
+      }
     }
   }
 
   // Categorie generique pour les elements personnalises (section 30)
-  await prisma.expenseCategory.upsert({
-    where: { name: 'Element personnalise' },
-    update: {},
-    create: { name: 'Element personnalise', group: 'Autre' },
-  });
+  await ensureCategory('Element personnalise', 'Autre');
+}
 
-  console.log('Seed: superadmin par defaut...');
-  const superadminEmail = process.env.SEED_SUPERADMIN_EMAIL || 'thiernodoniko@gmail.com';
-  const superadminPassword = process.env.SEED_SUPERADMIN_PASSWORD || 'Lcd123456!';
-  const existing = await prisma.user.findUnique({ where: { email: superadminEmail } });
-  if (!existing) {
-    const passwordHash = await argon2.hash(superadminPassword);
-    await prisma.user.create({
-      data: {
-        email: superadminEmail,
-        passwordHash,
-        role: 'SUPERADMIN',
-        status: 'ACTIVE',
-      },
-    });
-    console.log(`   -> Superadmin cree : ${superadminEmail} / ${superadminPassword} (A CHANGER IMMEDIATEMENT)`);
-  } else {
-    console.log('   -> Superadmin deja present, ignore.');
+async function seedSuperadmin() {
+  console.log('Seed: superadmin...');
+  const email = process.env.SEED_SUPERADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.SEED_SUPERADMIN_PASSWORD;
+
+  const alreadyHasSuperadmin = (await prisma.user.count({ where: { role: 'SUPERADMIN' } })) > 0;
+  if (alreadyHasSuperadmin) {
+    console.log('   -> Un superadmin existe deja, ignore.');
+    return;
   }
 
+  if (!email || !password) {
+    throw new Error(
+      'Aucun superadmin en base : definissez SEED_SUPERADMIN_EMAIL et SEED_SUPERADMIN_PASSWORD pour le creer (aucune valeur par defaut).',
+    );
+  }
+  assertStrongPassword(password);
+
+  const passwordHash = await argon2.hash(password);
+  await prisma.user.create({ data: { email, passwordHash, role: 'SUPERADMIN', status: 'ACTIVE' } });
+  console.log(`   -> Superadmin cree : ${email}`);
+}
+
+async function main() {
+  await seedCatalogue();
+  await seedSuperadmin();
   console.log('Seed termine.');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error(e instanceof Error ? e.message : e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-//npm run prisma:seed

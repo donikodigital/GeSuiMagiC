@@ -1,10 +1,11 @@
 //backend/src/app.module.ts
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import configuration from './config/configuration';
+import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
 
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -34,10 +35,13 @@ import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate: validateEnv }),
+    // Les valeurs THROTTLE_TTL (secondes) / THROTTLE_LIMIT du .env etaient
+    // ignorees (60 s / 100 requetes codes en dur) : elles sont maintenant lues.
     ThrottlerModule.forRootAsync({
-      useFactory: () => ({
-        throttlers: [{ ttl: 60_000, limit: 100 }],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [{ ttl: config.get<number>('throttle.ttl')! * 1000, limit: config.get<number>('throttle.limit')! }],
       }),
     }),
     PrismaModule,

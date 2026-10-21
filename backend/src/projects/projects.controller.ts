@@ -1,7 +1,6 @@
 //backend/src/projects/projects.controller.ts
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ProjectStatus, UserRole } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { ProjectAccessGuard, ProjectParam } from '../common/guards/project-access.guard';
@@ -12,17 +11,8 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { UpdateProjectFinancialsDto } from './dto/update-project-financials.dto';
 import { ProjectQueryDto } from './dto/project-query.dto';
-
-class UpdateStatusDto {
-  @IsEnum(ProjectStatus)
-  status: ProjectStatus;
-}
-
-class AssignSupervisorDto {
-  @IsString()
-  @IsNotEmpty()
-  supervisorId: string;
-}
+import { UpdateProjectStatusDto } from './dto/update-project-status.dto';
+import { AssignSupervisorDto } from './dto/assign-supervisor.dto';
 
 @Controller('projects')
 export class ProjectsController {
@@ -34,7 +24,7 @@ export class ProjectsController {
   @Post()
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
   async create(@Body() dto: CreateProjectDto, @CurrentUser() actor: AuthenticatedUser) {
-    const clientId = actor.role === 'CLIENT' ? actor.clientProfileId! : dto.clientId;
+    const clientId = actor.role === 'CLIENT' ? actor.clientProfileId : dto.clientId;
     if (!clientId) throw AppException.badRequest('CLIENT_ID_REQUIRED', 'clientId est requis pour une creation par le superadmin.');
     return this.projectsService.create(dto, clientId, actor);
   }
@@ -47,14 +37,14 @@ export class ProjectsController {
   @Get(':id')
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.projectsService.findOne(id);
   }
 
   @Get(':id/financial-summary')
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
-  async financialSummary(@Param('id') id: string) {
+  async financialSummary(@Param('id', ParseUUIDPipe) id: string) {
     return this.wallets.getFinancialSummary(id);
   }
 
@@ -62,7 +52,7 @@ export class ProjectsController {
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async update(@Param('id') id: string, @Body() dto: UpdateProjectDto, @CurrentUser() actor: AuthenticatedUser) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProjectDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.projectsService.updateNonFinancial(id, dto, actor);
   }
 
@@ -70,7 +60,7 @@ export class ProjectsController {
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async updateFinancials(@Param('id') id: string, @Body() dto: UpdateProjectFinancialsDto, @CurrentUser() actor: AuthenticatedUser) {
+  async updateFinancials(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProjectFinancialsDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.projectsService.updateFinancials(id, dto, actor);
   }
 
@@ -78,14 +68,14 @@ export class ProjectsController {
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto, @CurrentUser() actor: AuthenticatedUser) {
+  async updateStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProjectStatusDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.projectsService.updateStatus(id, dto.status, actor);
   }
 
   @Get(':id/supervisors')
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
-  async listSupervisors(@Param('id') id: string) {
+  async listSupervisors(@Param('id', ParseUUIDPipe) id: string) {
     return this.projectsService.listSupervisors(id);
   }
 
@@ -93,7 +83,7 @@ export class ProjectsController {
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async assignSupervisor(@Param('id') id: string, @Body() dto: AssignSupervisorDto, @CurrentUser() actor: AuthenticatedUser) {
+  async assignSupervisor(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignSupervisorDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.projectsService.assignSupervisor(id, dto.supervisorId, actor);
   }
 
@@ -101,7 +91,7 @@ export class ProjectsController {
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async revokeSupervisor(@Param('id') id: string, @Param('supervisorId') supervisorId: string, @CurrentUser() actor: AuthenticatedUser) {
+  async revokeSupervisor(@Param('id', ParseUUIDPipe) id: string, @Param('supervisorId', ParseUUIDPipe) supervisorId: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.projectsService.revokeSupervisor(id, supervisorId, actor);
   }
 
@@ -109,7 +99,7 @@ export class ProjectsController {
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.projectsService.remove(id, actor);
   }
 }

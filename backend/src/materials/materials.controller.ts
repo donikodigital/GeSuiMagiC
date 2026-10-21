@@ -1,73 +1,14 @@
-// backend/src/materials/materials.controller.ts - v1.3
-// Ajout de remove() (DELETE :id), reserve au superadmin : suppression
-// definitive autorisee uniquement si aucune depense ne reference ce
-// materiau. Reste inchange.
-
-import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post, Query } from '@nestjs/common';
+//backend/src/materials/materials.controller.ts
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
-import { AppException } from '../common/exceptions/app.exception';
+import { AuthenticatedUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { MaterialQueryDto } from '../common/dto/catalogue-query.dto';
+import { MaterialsService } from './materials.service';
 import { UpsertMaterialDto } from './dto/upsert-material.dto';
+import { UpdateMaterialDto } from './dto/update-material.dto';
 
-@Injectable()
-export class MaterialsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
-  ) {}
-
-  async create(dto: UpsertMaterialDto, actor: AuthenticatedUser) {
-    const material = await this.prisma.material.create({
-      data: { name: dto.name, categoryId: dto.categoryId, defaultUnitId: dto.defaultUnitId, isActive: dto.isActive ?? true },
-    });
-    await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'CREATE', entityType: 'Material', entityId: material.id, newValue: dto });
-    return material;
-  }
-
-  async findAll(categoryId: string | undefined, includeInactive: boolean) {
-    return this.prisma.material.findMany({
-      where: { categoryId, ...(includeInactive ? {} : { isActive: true }) },
-      include: { category: true, defaultUnit: true },
-      orderBy: { name: 'asc' },
-    });
-  }
-
-  async update(id: string, dto: UpsertMaterialDto, actor: AuthenticatedUser) {
-    const existing = await this.prisma.material.findUnique({ where: { id } });
-    if (!existing) throw AppException.notFound('Materiau');
-    const updated = await this.prisma.material.update({ where: { id }, data: dto });
-    await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'Material', entityId: id, oldValue: existing, newValue: updated });
-    return updated;
-  }
-
-  async setActive(id: string, isActive: boolean, actor: AuthenticatedUser) {
-    const updated = await this.prisma.material.update({ where: { id }, data: { isActive } });
-    await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'Material', entityId: id, newValue: { isActive } });
-    return updated;
-  }
-
-  /** Suppression definitive : uniquement si aucune depense ne reference ce materiau. */
-  async remove(id: string, actor: AuthenticatedUser) {
-    const existing = await this.prisma.material.findUnique({ where: { id } });
-    if (!existing) throw AppException.notFound('Materiau');
-
-    const expensesCount = await this.prisma.expense.count({ where: { materialId: id } });
-    if (expensesCount > 0) {
-      throw AppException.conflict(
-        'MATERIAL_IN_USE',
-        `Ce materiau est utilise dans ${expensesCount} depense(s) et ne peut pas etre supprime. Desactivez-le plutot pour le retirer des nouvelles saisies.`,
-      );
-    }
-
-    await this.prisma.material.delete({ where: { id } });
-    await this.audit.log({ userId: actor.userId, userRole: actor.role, action: 'DELETE_SOFT', entityType: 'Material', entityId: id, oldValue: existing });
-    return { removed: true };
-  }
-}
-
+/** Meme logique d'acces que les categories (catalogue global + prive du client). */
 @Controller('materials')
 export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
@@ -79,31 +20,31 @@ export class MaterialsController {
   }
 
   @Get()
-  async findAll(@Query('categoryId') categoryId?: string, @Query('includeInactive') includeInactive?: string) {
-    return this.materialsService.findAll(categoryId, includeInactive === 'true');
+  async findAll(@Query() query: MaterialQueryDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.materialsService.findAll(actor, query.categoryId, query.includeInactive === true);
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPERADMIN)
-  async update(@Param('id') id: string, @Body() dto: UpsertMaterialDto, @CurrentUser() actor: AuthenticatedUser) {
+  @Roles(UserRole.SUPERADMIN, UserRole.CLIENT)
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateMaterialDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.materialsService.update(id, dto, actor);
   }
 
   @Patch(':id/deactivate')
-  @Roles(UserRole.SUPERADMIN)
-  async deactivate(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  @Roles(UserRole.SUPERADMIN, UserRole.CLIENT)
+  async deactivate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.materialsService.setActive(id, false, actor);
   }
 
   @Patch(':id/reactivate')
-  @Roles(UserRole.SUPERADMIN)
-  async reactivate(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  @Roles(UserRole.SUPERADMIN, UserRole.CLIENT)
+  async reactivate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.materialsService.setActive(id, true, actor);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPERADMIN)
-  async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  @Roles(UserRole.SUPERADMIN, UserRole.CLIENT)
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.materialsService.remove(id, actor);
   }
 }

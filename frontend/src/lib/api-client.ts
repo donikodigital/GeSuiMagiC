@@ -23,27 +23,45 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
 
 let refreshPromise: Promise<string> | null = null;
 
-/** Rafraichit le token une seule fois meme si plusieurs requetes echouent en parallele. */
+/**
+ * Rafraichit le token une seule fois meme si plusieurs requetes echouent en parallele.
+ * Le serveur renvoie une NOUVELLE paire (access + refresh) : les deux sont enregistres,
+ * sinon le refresh token deja consomme serait rejoue et la session invalidee.
+ */
 async function refreshAccessToken(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const { refreshToken, setAccessToken, clear } = useAuthStore.getState();
+      const { refreshToken, setTokens, clear } = useAuthStore.getState();
       if (!refreshToken) {
         clear();
         throw new ApiError(401, 'NO_REFRESH_TOKEN', 'Session expiree.');
       }
-      const res = await fetch(`${API_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+
+      let res: Response;
+      try {
+        res = await fetch(`${API_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {
+        // Panne reseau : la session n'est PAS invalidee, on pourra reessayer.
+        throw new ApiError(0, 'NETWORK_ERROR', 'Impossible de joindre le serveur.');
+      }
+
       if (!res.ok) {
+        // Seul un refus explicite du serveur met fin a la session (pas une erreur 5xx passagere).
+        if (res.status === 401 || res.status === 403 || res.status === 400) clear();
+        throw new ApiError(401, 'REFRESH_FAILED', 'Session expiree, merci de vous reconnecter.');
+      }
+
+      const json = await res.json().catch(() => null);
+      const accessToken: string | undefined = json?.data?.accessToken;
+      if (!accessToken) {
         clear();
         throw new ApiError(401, 'REFRESH_FAILED', 'Session expiree, merci de vous reconnecter.');
       }
-      const json = await res.json();
-      const accessToken = json.data.accessToken as string;
-      setAccessToken(accessToken);
+      setTokens({ accessToken, refreshToken: json?.data?.refreshToken });
       return accessToken;
     })().finally(() => {
       refreshPromise = null;
@@ -52,26 +70,30 @@ async function refreshAccessToken(): Promise<string> {
   return refreshPromise;
 }
 
-export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, skipAuth, headers, ...rest } = options;
-
+/**
+ * fetch authentifie : ajoute le jeton, transforme une panne reseau en ApiError,
+ * et retente UNE fois apres rafraichissement en cas de 401 (access token expire).
+ * Utilise aussi par downloadFile (avant, un telechargement echouait des que le
+ * jeton d'acces de 15 minutes avait expire).
+ */
+async function authedFetch(path: string, init: RequestInit, skipAuth?: boolean): Promise<Response> {
   const doFetch = async (token: string | null) => {
-    const res = await fetch(`${API_URL}${path}`, {
-      ...rest,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...headers,
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    return res;
+    try {
+      return await fetch(`${API_URL}${path}`, {
+        ...init,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(init.headers as Record<string, string> | undefined),
+        },
+      });
+    } catch {
+      throw new ApiError(0, 'NETWORK_ERROR', 'Impossible de joindre le serveur. Verifiez votre connexion.');
+    }
   };
 
   const token = skipAuth ? null : useAuthStore.getState().accessToken;
   let res = await doFetch(token);
 
-  // Retente une fois apres un refresh en cas de 401 (access token expire).
   if (res.status === 401 && !skipAuth && useAuthStore.getState().refreshToken) {
     try {
       const newToken = await refreshAccessToken();
@@ -80,8 +102,24 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       // Le refresh a echoue, on laisse la 401 originale remonter.
     }
   }
+  return res;
+}
 
-  const isBinary = res.headers.get('content-type')?.includes('application/pdf') || res.headers.get('content-type')?.includes('spreadsheetml');
+export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { body, skipAuth, headers, ...rest } = options;
+
+  const res = await authedFetch(
+    path,
+    {
+      ...rest,
+      headers: { 'Content-Type': 'application/json', ...(headers as Record<string, string> | undefined) },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
+    skipAuth,
+  );
+
+  const contentType = res.headers.get('content-type') ?? '';
+  const isBinary = res.ok && (contentType.includes('application/pdf') || contentType.includes('spreadsheetml'));
   if (isBinary) {
     return (await res.blob()) as unknown as T;
   }
@@ -92,7 +130,8 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     throw new ApiError(res.status, json?.code ?? 'UNKNOWN_ERROR', json?.message ?? 'Une erreur est survenue.', json?.details);
   }
 
-  return json.data as T;
+  // Reponse sans corps (204...) : pas de donnees plutot qu'un plantage sur `null.data`.
+  return (json?.data ?? undefined) as T;
 }
 
 export const api = {
@@ -104,15 +143,26 @@ export const api = {
   delete: <T>(path: string, body?: unknown, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'DELETE', body }),
 };
 
+/** Extrait le nom de fichier d'un en-tete Content-Disposition (filename* en UTF-8 prioritaire). */
+function filenameFromDisposition(disposition: string | null): string | undefined {
+  if (!disposition) return undefined;
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // on retombe sur filename="..."
+    }
+  }
+  return disposition.match(/filename="([^"]+)"/i)?.[1];
+}
+
 /** Telecharge un fichier binaire (PDF/Excel) et declenche le "Save As" du navigateur. */
 export async function downloadFile(path: string, filenameFallback: string) {
-  const token = useAuthStore.getState().accessToken;
-  const res = await fetch(`${API_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const res = await authedFetch(path, { method: 'GET' });
   if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_FAILED', 'Le telechargement a echoue.');
   const blob = await res.blob();
-  const disposition = res.headers.get('content-disposition');
-  const match = disposition?.match(/filename="(.+)"/);
-  const filename = match?.[1] ?? filenameFallback;
+  const filename = filenameFromDisposition(res.headers.get('content-disposition')) ?? filenameFallback;
 
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');

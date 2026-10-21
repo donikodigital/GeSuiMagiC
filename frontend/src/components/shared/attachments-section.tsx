@@ -1,4 +1,8 @@
-// frontend/src/components/shared/attachments-section.tsx - v2.2
+//frontend/src/components/shared/attachments-section.tsx
+// v2.3 : lien d'ouverture limite a http(s) + rel="noopener noreferrer" ; suppression en
+// deux temps (confirmation) pour eviter un clic accidentel ; plus de plantage si
+// kindOptions est vide. Le reste est inchange par rapport a v2.2.
+//
 // Fix : la v2.1 evitait le retour a la ligne des pastilles de categorie
 // via overflow-x-auto, mais demande explicite de ne surtout pas avoir de
 // scroll horizontal non plus. Remplace par flex-1 sur chaque pastille :
@@ -35,13 +39,17 @@ const DEFAULT_KINDS = [
   { value: 'document', label: 'Document' },
 ];
 
+/** N'ouvre que des liens http(s) (jamais javascript:, data:...). */
+const safeHref = (url: string) => (/^https?:\/\//i.test(url) ? url : undefined);
+
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
 const MAX_FILE_SIZE_MB = 15;
 
 export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOnly }: AttachmentsSectionProps) {
   const queryClient = useQueryClient();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const [kind, setKind] = React.useState(kindOptions[0].value);
+  const [kind, setKind] = React.useState(kindOptions[0]?.value ?? 'document');
+  const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
   const dragCounter = React.useRef(0);
 
@@ -63,10 +71,14 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
   const removeMutation = useMutation({
     mutationFn: (id: string) => attachmentsService.remove(id),
     onSuccess: () => {
+      setConfirmingId(null);
       queryClient.invalidateQueries({ queryKey });
       toast.success('Pièce jointe supprimée.');
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Suppression impossible.'),
+    onError: (error) => {
+      setConfirmingId(null);
+      toast.error(error instanceof ApiError ? error.message : 'Suppression impossible.');
+    },
   });
 
   const submitFile = (file: File) => {
@@ -196,7 +208,7 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
                   {isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                 </span>
 
-                <a href={a.fileUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 group">
+                <a href={safeHref(a.fileUrl)} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 group">
                   <p className="truncate text-sm font-medium text-ink-800 group-hover:text-blueprint-600">{a.fileName}</p>
                   <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-400">
                     {kindLabel && (
@@ -209,15 +221,33 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
                   </div>
                 </a>
 
-                {!readOnly && (
-                  <button
-                    onClick={() => removeMutation.mutate(a.id)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-300 transition-colors hover:bg-clay-50 hover:text-clay-500"
-                    aria-label="Supprimer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                {!readOnly &&
+                  (confirmingId === a.id ? (
+                    <div className="flex shrink-0 items-center gap-1.5 text-xs">
+                      <button
+                        onClick={() => removeMutation.mutate(a.id)}
+                        disabled={removeMutation.isPending}
+                        className="rounded-full bg-clay-500 px-2.5 py-1 font-medium text-white transition-colors hover:bg-clay-600 disabled:opacity-60"
+                      >
+                        Supprimer
+                      </button>
+                      <button
+                        onClick={() => setConfirmingId(null)}
+                        disabled={removeMutation.isPending}
+                        className="rounded-full border border-concrete px-2.5 py-1 font-medium text-ink-500 transition-colors hover:text-ink-800"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingId(a.id)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-300 transition-colors hover:bg-clay-50 hover:text-clay-500"
+                      aria-label="Supprimer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  ))}
               </li>
             );
           })}

@@ -1,5 +1,7 @@
+//backend/src/settings/settings.module.ts
 import { Module } from '@nestjs/common';
-import { SettingsController, SettingsService, ProjectSettingsController } from './settings.controller';
+import { SettingsController, ProjectSettingsController } from './settings.controller';
+import { SettingsService } from './settings.service';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({

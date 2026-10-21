@@ -1,13 +1,7 @@
 //backend/src/wallets/wallets.service.ts
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { add, subtract, toDecimal } from '../common/utils/money.util';
-import type { Prisma, PrismaClient } from '@prisma/client';
-
-// IMPORTANT : derive depuis PrismaClient (le client Prisma standard), PAS depuis
-// PrismaService. $transaction() fournit un objet typé sur PrismaClient — PrismaService
-// ajoute des méthodes custom (onModuleInit, runInTransaction...) que cet objet n'a jamais.
-type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+import { PrismaService, TxClient } from '../prisma/prisma.service';
+import { subtract, toDecimal } from '../common/utils/money.util';
 
 /**
  * Coeur financier de l'application (section 12/51).
@@ -19,6 +13,9 @@ type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transa
  * qui le modifie (validation d'un depot, validation/annulation d'une
  * depense, correction administrative). Il n'est JAMAIS ecrit "a la main"
  * ailleurs, ce qui garantit qu'il reste toujours reconciliable.
+ *
+ * Un solde NEGATIF est une regle metier assumee (une depense validee n'est
+ * jamais bloquee faute de fonds) : il est signale par des alertes, pas refuse.
  */
 @Injectable()
 export class WalletsService {
@@ -26,7 +23,7 @@ export class WalletsService {
 
   /** Cree le portefeuille (a solde 0) a la creation du projet. */
   async createForProject(projectId: string, currency: string, tx?: TxClient): Promise<void> {
-    const client = (tx ?? this.prisma) as any;
+    const client: TxClient = tx ?? this.prisma;
     await client.wallet.create({
       data: { projectId, currency, totalDeposited: 0, totalSpent: 0, balance: 0 },
     });
@@ -35,11 +32,10 @@ export class WalletsService {
   /**
    * Recalcule integralement le solde a partir des operations validees.
    * A appeler dans la meme transaction que tout changement de statut de
-   * depot/depense. Retourne le wallet a jour (utile pour verifier le solde
-   * disponible avant d'autoriser une nouvelle depense).
+   * depot/depense. Retourne le wallet a jour.
    */
   async recompute(projectId: string, tx?: TxClient) {
-    const client = (tx ?? this.prisma) as any;
+    const client: TxClient = tx ?? this.prisma;
 
     const [depositAgg, expenseAgg] = await Promise.all([
       client.deposit.aggregate({ where: { projectId, status: 'APPROVED' }, _sum: { amount: true } }),
@@ -70,7 +66,7 @@ export class WalletsService {
     ]);
 
     const budget = toDecimal(project.budget);
-    const spentRatio = budget.greaterThan(0) ? wallet.totalSpent.div(budget).mul(100) : toDecimal(0);
+    const spentRatio = budget.greaterThan(0) ? toDecimal(wallet.totalSpent).div(budget).mul(100) : toDecimal(0);
 
     return {
       projectName: project.name,

@@ -1,7 +1,12 @@
+#frontend/.gitignore
 node_modules
 .next
 out
 .env
 .env.local
+.env.*.local
 *.log
+*.tsbuildinfo
+.vercel
+coverage
 .DS_Store

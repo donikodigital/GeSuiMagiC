@@ -3,7 +3,9 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-import { add, isGreaterThan, toDecimal } from '../common/utils/money.util';
+import { AppException } from '../common/exceptions/app.exception';
+import { isCatalogueEntryUsableBy } from '../common/utils/catalogue-access.util';
+import { isGreaterThan, roundMoney, toDecimal } from '../common/utils/money.util';
 import { UpsertBudgetDto } from './dto/upsert-budget.dto';
 
 @Injectable()
@@ -14,22 +16,38 @@ export class BudgetsService {
   ) {}
 
   async upsert(projectId: string, dto: UpsertBudgetDto, actor: AuthenticatedUser) {
-    const budget = await this.prisma.budget.upsert({
-      where: { projectId_categoryId: { projectId, categoryId: dto.categoryId } },
-      update: { amount: dto.amount },
-      create: { projectId, categoryId: dto.categoryId, amount: dto.amount },
-    });
+    const amount = roundMoney(dto.amount);
 
-    await this.audit.log({
-      userId: actor.userId,
-      userRole: actor.role,
-      action: 'UPDATE',
-      entityType: 'Budget',
-      entityId: budget.id,
-      newValue: { projectId, categoryId: dto.categoryId, amount: dto.amount },
-    });
+    return this.prisma.runInTransaction(async (tx) => {
+      const project = await tx.project.findUnique({ where: { id: projectId }, select: { clientId: true } });
+      if (!project) throw AppException.notFound('Projet');
+      const category = await tx.expenseCategory.findUnique({ where: { id: dto.categoryId }, select: { id: true, ownerClientId: true } });
+      // La categorie doit faire partie du catalogue du client du projet (globale ou privee de CE client).
+      if (!category || !isCatalogueEntryUsableBy(category.ownerClientId, project.clientId)) {
+        throw AppException.badRequest('INVALID_CATEGORY', "Cette catégorie n'existe pas.");
+      }
 
-    return budget;
+      const previous = await tx.budget.findUnique({ where: { projectId_categoryId: { projectId, categoryId: dto.categoryId } } });
+      const budget = await tx.budget.upsert({
+        where: { projectId_categoryId: { projectId, categoryId: dto.categoryId } },
+        update: { amount },
+        create: { projectId, categoryId: dto.categoryId, amount },
+      });
+
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          userRole: actor.role,
+          action: 'UPDATE',
+          entityType: 'Budget',
+          entityId: budget.id,
+          oldValue: previous ? { amount: previous.amount.toString() } : undefined,
+          newValue: { projectId, categoryId: dto.categoryId, amount: amount.toString() },
+        },
+        tx,
+      );
+      return budget;
+    });
   }
 
   async listForProject(projectId: string) {
@@ -78,17 +96,15 @@ export class BudgetsService {
   }
 
   async remove(projectId: string, categoryId: string, actor: AuthenticatedUser) {
-    const budget = await this.prisma.budget.findUnique({ where: { projectId_categoryId: { projectId, categoryId } } });
-    if (!budget) return;
+    await this.prisma.runInTransaction(async (tx) => {
+      const budget = await tx.budget.findUnique({ where: { projectId_categoryId: { projectId, categoryId } } });
+      if (!budget) return;
 
-    await this.prisma.budget.delete({ where: { id: budget.id } });
-    await this.audit.log({
-      userId: actor.userId,
-      userRole: actor.role,
-      action: 'DELETE_SOFT',
-      entityType: 'Budget',
-      entityId: budget.id,
-      oldValue: { amount: budget.amount },
+      await tx.budget.delete({ where: { id: budget.id } });
+      await this.audit.log(
+        { userId: actor.userId, userRole: actor.role, action: 'DELETE_SOFT', entityType: 'Budget', entityId: budget.id, oldValue: { amount: budget.amount.toString() } },
+        tx,
+      );
     });
   }
 }

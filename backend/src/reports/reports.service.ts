@@ -1,4 +1,6 @@
-// backend/src/reports/reports.service.ts - v2.2
+//backend/src/reports/reports.service.ts
+// v2.3 : nom de fichier des exports assaini (toSafeFileName) - un nom de projet avec guillemets, retours a la
+// ligne ou caracteres hors Latin-1 faisait echouer le telechargement (erreur 500 / injection d'en-tete).
 // Export Excel entierement repense pour se rapprocher du rapport PDF :
 // - Recapitulatif enrichi (bandeau + logo, identite du chantier, KPI sous
 //   forme de "cartes" avec FORMULES qui recalculent Total verse / Total
@@ -27,6 +29,7 @@ import ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatMoney } from '../common/utils/money.util';
 import { AppException } from '../common/exceptions/app.exception';
+import { toSafeFileName } from '../common/utils/file-name.util';
 
 interface ReportRow {
   date: Date;
@@ -385,7 +388,7 @@ export class ReportsService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
     });
 
-    return { buffer, filename: `rapport-${project.name.replace(/\s+/g, '_')}-${Date.now()}.pdf` };
+    return { buffer, filename: `rapport-${toSafeFileName(project.name)}-${Date.now()}.pdf` };
   }
 
   // --------------------------------------------------------------------
@@ -787,6 +790,6 @@ export class ReportsService {
     const arrayBuffer = await workbook.xlsx.writeBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    return { buffer, filename: `export-${project.name.replace(/\s+/g, '_')}-${Date.now()}.xlsx` };
+    return { buffer, filename: `export-${toSafeFileName(project.name)}-${Date.now()}.xlsx` };
   }
 }

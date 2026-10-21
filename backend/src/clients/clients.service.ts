@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
+import { invalidateIdentitiesWhere, invalidateIdentity } from '../auth/auth-cache';
 import { ProjectsService } from '../projects/projects.service';
 import { AppException } from '../common/exceptions/app.exception';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -23,13 +24,14 @@ export class ClientsService {
 
   /** Section 7-8 : creation d'un client (+ premier projet optionnel) + invitation securisee. */
   async create(dto: CreateClientDto, actor: AuthenticatedUser) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase().trim() } });
+    const email = dto.email.toLowerCase().trim();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw AppException.conflict('EMAIL_ALREADY_USED', 'Cet email est déjà utilisé par un compte existant.');
 
+    // Client + (premier projet) + audit dans UNE transaction : avant, un echec de creation du projet
+    // laissait un client cree, sans projet ni invitation, et l'email "deja utilise".
     const { user, clientProfile } = await this.prisma.runInTransaction(async (tx) => {
-      const createdUser = await tx.user.create({
-        data: { email: dto.email.toLowerCase().trim(), role: 'CLIENT', status: 'INVITED' },
-      });
+      const createdUser = await tx.user.create({ data: { email, role: 'CLIENT', status: 'INVITED' } });
 
       const createdProfile = await tx.clientProfile.create({
         data: {
@@ -47,6 +49,11 @@ export class ClientsService {
         },
       });
 
+      if (dto.firstProject) {
+        // clientId ne peut venir que de l'interieur : on ignore celui eventuellement present dans la charge utile.
+        await this.projectsService.createWithin(tx, { ...dto.firstProject, clientId: undefined }, createdProfile.id, actor);
+      }
+
       await this.audit.log(
         {
           userId: actor.userId,
@@ -61,14 +68,6 @@ export class ClientsService {
 
       return { user: createdUser, clientProfile: createdProfile };
     });
-
-    if (dto.firstProject) {
-      await this.projectsService.create(
-        { ...dto.firstProject },
-        clientProfile.id,
-        actor,
-      );
-    }
 
     // Envoi de l'invitation APRES le commit de la transaction (effet de bord externe).
     await this.authService.createInvitation(user.id);
@@ -112,54 +111,70 @@ export class ClientsService {
 
   /** Section 4.1 : le superadmin peut modifier les informations d'un client. */
   async update(id: string, dto: UpdateClientDto, actor: AuthenticatedUser) {
-    const existing = await this.prisma.clientProfile.findUniqueOrThrow({ where: { id } });
-    const updated = await this.prisma.clientProfile.update({ where: { id }, data: dto });
+    return this.prisma.runInTransaction(async (tx) => {
+      const existing = await tx.clientProfile.findUnique({ where: { id } });
+      if (!existing) throw AppException.notFound('Client');
+      const updated = await tx.clientProfile.update({ where: { id }, data: dto });
 
-    await this.audit.log({
-      userId: actor.userId,
-      userRole: actor.role,
-      action: 'UPDATE',
-      entityType: 'Client',
-      entityId: id,
-      oldValue: existing,
-      newValue: updated,
+      await this.audit.log(
+        { userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'Client', entityId: id, oldValue: existing, newValue: updated },
+        tx,
+      );
+      return updated;
     });
-
-    return updated;
   }
 
   /** Section 5 : le client ne peut modifier que certaines informations personnelles. */
   async updateOwnProfile(clientProfileId: string, dto: UpdateOwnClientProfileDto, actor: AuthenticatedUser) {
-    const existing = await this.prisma.clientProfile.findUniqueOrThrow({ where: { id: clientProfileId } });
-    const updated = await this.prisma.clientProfile.update({ where: { id: clientProfileId }, data: dto });
+    return this.prisma.runInTransaction(async (tx) => {
+      const existing = await tx.clientProfile.findUnique({ where: { id: clientProfileId } });
+      if (!existing) throw AppException.notFound('Client');
+      const updated = await tx.clientProfile.update({ where: { id: clientProfileId }, data: dto });
 
-    await this.audit.log({
-      userId: actor.userId,
-      userRole: actor.role,
-      action: 'UPDATE',
-      entityType: 'Client',
-      entityId: clientProfileId,
-      oldValue: { phone: existing.phone, address: existing.address, city: existing.city, profession: existing.profession },
-      newValue: dto,
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          userRole: actor.role,
+          action: 'UPDATE',
+          entityType: 'Client',
+          entityId: clientProfileId,
+          oldValue: { phone: existing.phone, address: existing.address, city: existing.city, profession: existing.profession },
+          newValue: dto,
+        },
+        tx,
+      );
+      return updated;
     });
-
-    return updated;
   }
 
+  /**
+   * Suspension / reactivation par le superadmin. La suspension coupe aussi l'acces des SUPERVISEURS de ce client
+   * (voir isAccountUsable) ; les identites en cache sont invalidees pour que l'effet soit immediat.
+   */
   async setSuspended(id: string, suspended: boolean, actor: AuthenticatedUser) {
-    const existing = await this.prisma.clientProfile.findUniqueOrThrow({ where: { id } });
-    const updated = await this.prisma.clientProfile.update({ where: { id }, data: { isActive: !suspended } });
+    const updated = await this.prisma.runInTransaction(async (tx) => {
+      const existing = await tx.clientProfile.findUnique({ where: { id } });
+      if (!existing) throw AppException.notFound('Client');
+      const result = await tx.clientProfile.update({ where: { id }, data: { isActive: !suspended } });
 
-    await this.audit.log({
-      userId: actor.userId,
-      userRole: actor.role,
-      action: suspended ? 'UPDATE' : 'UPDATE',
-      entityType: 'Client',
-      entityId: id,
-      oldValue: { isActive: existing.isActive },
-      newValue: { isActive: !suspended },
-      reason: suspended ? 'Suspension du client par le superadmin' : 'Reactivation du client par le superadmin',
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          userRole: actor.role,
+          action: 'UPDATE',
+          entityType: 'Client',
+          entityId: id,
+          oldValue: { isActive: existing.isActive },
+          newValue: { isActive: !suspended },
+          reason: suspended ? 'Suspension du client par le superadmin' : 'Reactivation du client par le superadmin',
+        },
+        tx,
+      );
+      return result;
     });
+
+    invalidateIdentity(updated.userId);
+    invalidateIdentitiesWhere((u) => u.tenantClientId === id);
 
     return updated;
   }
@@ -167,29 +182,32 @@ export class ClientsService {
   /**
    * Suppression definitive d'un client (bouton superadmin - visible cote
    * front uniquement quand 0 projet). Verification refaite ici cote
-   * serveur : ne jamais se fier au seul masquage du bouton, un appel API
-   * direct pourrait sinon supprimer un client avec projets et casser
-   * l'integrite de l'historique financier. Supprime aussi le User associe
-   * (sinon un compte INVITED orphelin bloquerait toute recreation future
-   * avec le meme email - cf. verification d'unicite dans create()).
+   * serveur, dans la transaction : ne jamais se fier au seul masquage du
+   * bouton. Supprime aussi les User associes (le client ET ses superviseurs) :
+   * sinon des comptes orphelins bloqueraient toute recreation future avec le
+   * meme email (cf. verification d'unicite dans create()).
    */
   async remove(id: string, actor: AuthenticatedUser) {
-    const client = await this.prisma.clientProfile.findUnique({
-      where: { id },
-      include: { _count: { select: { projects: true } } },
-    });
-    if (!client) throw AppException.notFound('Client');
+    const removedUserIds = await this.prisma.runInTransaction(async (tx) => {
+      const client = await tx.clientProfile.findUnique({
+        where: { id },
+        include: { _count: { select: { projects: true } }, supervisors: { select: { userId: true } } },
+      });
+      if (!client) throw AppException.notFound('Client');
 
-    if (client._count.projects > 0) {
-      throw AppException.badRequest(
-        'CLIENT_HAS_PROJECTS',
-        'Ce client a des projets associés et ne peut pas être supprimé.',
-      );
-    }
+      if (client._count.projects > 0) {
+        throw AppException.badRequest('CLIENT_HAS_PROJECTS', 'Ce client a des projets associés et ne peut pas être supprimé.');
+      }
 
-    await this.prisma.runInTransaction(async (tx) => {
-      await tx.clientProfile.delete({ where: { id } });
-      await tx.user.delete({ where: { id: client.userId } });
+      const supervisorUserIds = client.supervisors.map((s) => s.userId);
+      // Catalogue prive du client : materiaux d'abord (FK RESTRICT vers les categories), puis categories et unites.
+      // (Aucun projet => aucune depense ni budget ne les reference.)
+      await tx.material.deleteMany({ where: { ownerClientId: id } });
+      await tx.expenseCategory.deleteMany({ where: { ownerClientId: id } });
+      await tx.unit.deleteMany({ where: { ownerClientId: id } });
+
+      // Supprimer le User supprime en cascade son profil (client ou superviseur).
+      await tx.user.deleteMany({ where: { id: { in: [...supervisorUserIds, client.userId] } } });
 
       await this.audit.log(
         {
@@ -198,24 +216,24 @@ export class ClientsService {
           action: 'DELETE_SOFT',
           entityType: 'Client',
           entityId: id,
-          oldValue: { firstName: client.firstName, lastName: client.lastName },
+          oldValue: { firstName: client.firstName, lastName: client.lastName, supervisors: supervisorUserIds.length },
           reason: 'Suppression du client par le superadmin (aucun projet associé)',
         },
         tx,
       );
+      return [...supervisorUserIds, client.userId];
     });
 
+    invalidateIdentity(...removedUserIds);
     return { removed: true };
   }
 
   /**
-   * Renvoie le lien d'invitation (demande superadmin - bouton visible
-   * uniquement pendant que le compte est toujours au statut INVITED,
-   * typiquement suite a une reclamation client apres expiration du
-   * premier lien). Reutilise authService.createInvitation, la meme
-   * methode que create() - donc doit generer un nouveau token cote
-   * AuthService (a verifier si l'ancien token n'est pas deja invalide
-   * naturellement par expiration).
+   * Renvoie le lien d'invitation (bouton visible uniquement pendant que le
+   * compte est toujours au statut INVITED, typiquement suite a une
+   * reclamation client apres expiration du premier lien). createInvitation
+   * genere un NOUVEAU jeton qui remplace l'ancien (l'ancien lien cesse de
+   * fonctionner).
    */
   async resendInvitation(id: string, actor: AuthenticatedUser) {
     const client = await this.prisma.clientProfile.findUnique({

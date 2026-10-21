@@ -1,4 +1,4 @@
-// frontend/src/components/catalog/category-detail-dialog.tsx
+//frontend/src/components/catalog/category-detail-dialog.tsx
 'use client';
 
 import * as React from 'react';
@@ -16,7 +16,9 @@ import type { ExpenseCategory } from '@/types/models';
 
 export function CategoryDetailDialog({ open, onClose, category }: { open: boolean; onClose: () => void; category: ExpenseCategory }) {
   const queryClient = useQueryClient();
-  const { isSuperadmin } = useAuth();
+  const { isSuperadmin, isClient } = useAuth();
+  // Le superadmin gere tout ; un client gere uniquement SES entrees privees (ownerClientId renseigne) - jamais le catalogue global.
+  const canManage = isSuperadmin || (isClient && !!category.ownerClientId);
   const [isEditing, setIsEditing] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [name, setName] = React.useState(category.name);
@@ -91,7 +93,7 @@ export function CategoryDetailDialog({ open, onClose, category }: { open: boolea
         <StatusBadge label={category.isActive ? 'Actif' : 'Desactive'} tone={category.isActive ? 'moss' : 'ink'} />
       </div>
 
-      {!isSuperadmin ? (
+      {!canManage ? (
         <div className="flex justify-end border-t border-concrete pt-4">
           <Button variant="outline" onClick={onClose}>
             Fermer

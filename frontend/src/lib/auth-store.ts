@@ -1,7 +1,9 @@
-// frontend/src/lib/auth-store.ts
+//frontend/src/lib/auth-store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CurrentUser } from '@/types/models';
+
+const STORAGE_KEY = 'chantier-auth';
 
 interface AuthState {
   accessToken: string | null;
@@ -9,7 +11,8 @@ interface AuthState {
   user: CurrentUser | null;
   hasHydrated: boolean;
   setSession: (data: { accessToken: string; refreshToken: string; user: CurrentUser }) => void;
-  setAccessToken: (accessToken: string) => void;
+  /** Le serveur fait tourner le refresh token a chaque rafraichissement : les DEUX jetons doivent etre conserves. */
+  setTokens: (data: { accessToken: string; refreshToken?: string }) => void;
   clear: () => void;
   setHasHydrated: (value: boolean) => void;
 }
@@ -22,12 +25,12 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       hasHydrated: false,
       setSession: ({ accessToken, refreshToken, user }) => set({ accessToken, refreshToken, user }),
-      setAccessToken: (accessToken) => set({ accessToken }),
+      setTokens: ({ accessToken, refreshToken }) => set((state) => ({ accessToken, refreshToken: refreshToken ?? state.refreshToken })),
       clear: () => set({ accessToken: null, refreshToken: null, user: null }),
       setHasHydrated: (value) => set({ hasHydrated: value }),
     }),
     {
-      name: 'chantier-auth',
+      name: STORAGE_KEY,
       // hasHydrated ne doit jamais etre persiste, sinon il repart avec la
       // valeur sauvegardee au lieu de repartir a false a chaque chargement.
       partialize: (state) => ({
@@ -41,3 +44,18 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 );
+
+/**
+ * Synchronisation entre onglets. Le refresh token est a usage unique cote
+ * serveur : si l'onglet A le renouvelle, l'onglet B garderait l'ancien en
+ * memoire, et son prochain rafraichissement serait pris pour un vol de jeton
+ * (session invalidee). On relit donc le stockage des qu'un autre onglet le modifie
+ * (connexion, rotation, deconnexion).
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY || event.key === null) {
+      void useAuthStore.persist.rehydrate();
+    }
+  });
+}

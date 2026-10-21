@@ -1,6 +1,6 @@
 //backend/src/common/dto/pagination.dto.ts
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 /** Query DTO commun pour les listes (recherche/filtres - section 40). */
 export class PaginationQueryDto {
@@ -19,6 +19,7 @@ export class PaginationQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   search?: string;
 }
 

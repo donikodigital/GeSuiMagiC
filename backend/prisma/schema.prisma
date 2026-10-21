@@ -1,3 +1,4 @@
+//backend/prisma/schema.prisma
 // ============================================================================
 // SCHEMA PRISMA - Plateforme de gestion financiere et de suivi de chantier
 // v1.1 - Voir cahier des charges pour le detail des regles metier
@@ -213,6 +214,11 @@ model ClientProfile {
   deposits       Deposit[]
   anomalies      Anomaly[]
 
+  // Entrees de catalogue privees de ce client
+  categories     ExpenseCategory[] @relation("CategoryOwner")
+  materials      Material[]        @relation("MaterialOwner")
+  units          Unit[]            @relation("UnitOwner")
+
   @@index([lastName, firstName])
   @@map("client_profiles")
 }
@@ -398,9 +404,16 @@ model Deposit {
 
 model ExpenseCategory {
   id         String   @id @default(uuid())
-  name       String   @unique
+  name       String
   group      String? // regroupement visuel: "Agregats", "Ciment", "Main-d'oeuvre"...
   isActive   Boolean  @default(true)
+
+  // Proprietaire du catalogue : null = catalogue GLOBAL (gere par le superadmin, visible de tous) ;
+  // sinon entree PRIVEE du client (visible de lui, de ses superviseurs et du superadmin uniquement).
+  // L'unicite du nom parmi les entrees globales (ownerClientId NULL) est verifiee par le service
+  // (PostgreSQL considere les NULL comme distincts dans un index unique).
+  ownerClientId String?
+  ownerClient   ClientProfile? @relation("CategoryOwner", fields: [ownerClientId], references: [id], onDelete: Cascade)
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -409,6 +422,8 @@ model ExpenseCategory {
   expenses   Expense[]
   budgets    Budget[]
 
+  @@unique([ownerClientId, name])
+  @@index([ownerClientId])
   @@map("expense_categories")
 }
 
@@ -421,23 +436,34 @@ model Material {
   defaultUnit Unit?            @relation(fields: [defaultUnitId], references: [id])
   isActive    Boolean          @default(true)
 
+  // Voir ExpenseCategory.ownerClientId (null = global).
+  ownerClientId String?
+  ownerClient   ClientProfile? @relation("MaterialOwner", fields: [ownerClientId], references: [id], onDelete: Cascade)
+
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
   expenses    Expense[]
 
-  @@unique([name, categoryId])
+  @@unique([ownerClientId, categoryId, name])
+  @@index([ownerClientId])
   @@map("materials")
 }
 
 model Unit {
   id        String     @id @default(uuid())
-  name      String     @unique
+  name      String
   symbol    String?
   isActive  Boolean    @default(true)
 
+  // Voir ExpenseCategory.ownerClientId (null = global).
+  ownerClientId String?
+  ownerClient   ClientProfile? @relation("UnitOwner", fields: [ownerClientId], references: [id], onDelete: Cascade)
+
   materials Material[]
 
+  @@unique([ownerClientId, name])
+  @@index([ownerClientId])
   @@map("units")
 }
 

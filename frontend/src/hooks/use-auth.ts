@@ -1,4 +1,4 @@
-// frontend/src/hooks/use-auth.ts
+//frontend/src/hooks/use-auth.ts
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -16,9 +16,11 @@ export function useAuth() {
   const loginMutation = useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) => authService.login(email, password),
     onSuccess: (data) => {
+      // Cache vide : si la session precedente a expire sans deconnexion explicite, les donnees
+      // de l'ancien utilisateur ne doivent pas etre affichees au suivant.
+      queryClient.clear();
       setSession(data);
-      const destination = data.user.role === 'SUPERVISOR' ? '/dashboard' : '/dashboard';
-      router.push(destination);
+      router.push('/dashboard');
     },
     onError: (error: unknown) => {
       const message = error instanceof ApiError ? error.message : 'Connexion impossible.';

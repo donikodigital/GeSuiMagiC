@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+//backend/src/budgets/budgets.controller.ts
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -14,23 +15,23 @@ export class BudgetsController {
 
   @Post()
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async upsert(@Param('projectId') projectId: string, @Body() dto: UpsertBudgetDto, @CurrentUser() actor: AuthenticatedUser) {
+  async upsert(@Param('projectId', ParseUUIDPipe) projectId: string, @Body() dto: UpsertBudgetDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.budgetsService.upsert(projectId, dto, actor);
   }
 
   @Get()
-  async list(@Param('projectId') projectId: string) {
+  async list(@Param('projectId', ParseUUIDPipe) projectId: string) {
     return this.budgetsService.listForProject(projectId);
   }
 
   @Get('comparison')
-  async comparison(@Param('projectId') projectId: string) {
+  async comparison(@Param('projectId', ParseUUIDPipe) projectId: string) {
     return this.budgetsService.getComparison(projectId);
   }
 
   @Delete(':categoryId')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
-  async remove(@Param('projectId') projectId: string, @Param('categoryId') categoryId: string, @CurrentUser() actor: AuthenticatedUser) {
+  async remove(@Param('projectId', ParseUUIDPipe) projectId: string, @Param('categoryId', ParseUUIDPipe) categoryId: string, @CurrentUser() actor: AuthenticatedUser) {
     await this.budgetsService.remove(projectId, categoryId, actor);
     return { removed: true };
   }

@@ -1,3 +1,4 @@
+<!-- frontend/README.md -->
 # Suivi de Chantier — Frontend
 
 Next.js 14 (App Router) + TypeScript + Tailwind CSS, consommant l'API du
@@ -12,7 +13,7 @@ npm run dev
 ```
 
 Le backend doit tourner (voir son propre README) et `NEXT_PUBLIC_API_URL`
-doit pointer dessus (`http://localhost:4000` par defaut).
+doit pointer dessus, prefixe `/api` inclus (`http://localhost:4000/api` par defaut).
 
 > Les polices (Fraunces, Inter, IBM Plex Mono) sont chargees via
 > `next/font/google`, qui les televerse depuis Google Fonts au moment du
@@ -43,7 +44,8 @@ src/
                             superviseurs, anomalies, reglages
       clients/             gestion clients (superadmin)
       supervisors/         gestion superviseurs (client)
-      materials/           catalogue (categories/materiaux/unites - superadmin)
+      materials/           catalogue (categories/materiaux/unites : global = superadmin,
+                            entrees privees modifiables par leur client)
       anomalies/           signalements (vue superadmin)
       audit/               journal d'audit (lecture seule, superadmin)
       settings/            profil, mot de passe, reglages globaux
@@ -62,7 +64,9 @@ src/
 
 JWT (access + refresh) stockes via `zustand/persist` (localStorage).
 `lib/api-client.ts` rafraichit automatiquement le token sur une 401 et
-rejoue la requete une fois. La garde de route est cote client
+rejoue la requete une fois. Le refresh token est **tourne** a chaque
+rafraichissement : les deux jetons sont donc enregistres, et synchronises
+entre onglets. Les jetons restent dans localStorage (pas de cookie httpOnly). La garde de route est cote client
 (`app/(app)/layout.tsx`) : pas de session cote serveur, adapte a une SPA
 consommant une API stateless.
 
@@ -77,5 +81,5 @@ negatif et reste visible tel quel sur le tableau de bord.
 ## Ce qui n'est pas encore couvert (V2/V3)
 
 Memes limites que le backend : journal photo de chantier, etapes de
-progression, messagerie client-superviseur, Mobile Money, IA. Voir le
+progression, Mobile Money, IA. Voir le
 README du backend pour le detail.

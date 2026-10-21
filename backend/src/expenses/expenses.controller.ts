@@ -1,8 +1,5 @@
-// backend/src/expenses/expenses.controller.ts - v1.1
-// Ajout de PATCH :id, DELETE :id, PATCH :id/archive, PATCH :id/unarchive,
-// tous reserves au superadmin.
-
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+//backend/src/expenses/expenses.controller.ts
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -24,13 +21,13 @@ export class ProjectExpensesController {
 
   @Post()
   @Roles(UserRole.SUPERVISOR)
-  async create(@Param('projectId') projectId: string, @Body() dto: CreateExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+  async create(@Param('projectId', ParseUUIDPipe) projectId: string, @Body() dto: CreateExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.create(projectId, dto, actor);
   }
 
   @Get()
-  async findAll(@Param('projectId') projectId: string, @Query() query: ExpenseQueryDto) {
-    return this.expensesService.findAllForProject(projectId, query);
+  async findAll(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() query: ExpenseQueryDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.expensesService.findAllForProject(projectId, query, actor);
   }
 }
 
@@ -39,61 +36,61 @@ export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
   @Get(':id')
-  async findOne(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.findOne(id, actor);
   }
 
   @Post(':id/approve')
   @Roles(UserRole.CLIENT)
-  async approve(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.approve(id, actor);
   }
 
   @Post(':id/reject')
   @Roles(UserRole.CLIENT)
-  async reject(@Param('id') id: string, @Body() dto: RejectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+  async reject(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.reject(id, dto.reason, actor);
   }
 
   @Post(':id/cancel')
   @Roles(UserRole.SUPERADMIN)
-  async cancel(@Param('id') id: string, @Body() dto: CancelExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+  async cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.cancel(id, dto.reason, actor);
   }
 
   @Post(':id/correct')
   @Roles(UserRole.SUPERADMIN)
-  async correct(@Param('id') id: string, @Body() dto: CorrectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+  async correct(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CorrectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.correctAmount(id, dto.newTotal, dto.reason, actor);
   }
 
   @Patch(':id/payment-status')
   @Roles(UserRole.SUPERVISOR, UserRole.SUPERADMIN)
-  async updatePaymentStatus(@Param('id') id: string, @Body() dto: UpdateExpensePaymentDto, @CurrentUser() actor: AuthenticatedUser) {
+  async updatePaymentStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExpensePaymentDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.updatePaymentStatus(id, dto, actor);
   }
 
   @Patch(':id')
   @Roles(UserRole.SUPERADMIN)
-  async update(@Param('id') id: string, @Body() dto: UpdateExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.update(id, dto, actor);
   }
 
   @Delete(':id')
   @Roles(UserRole.SUPERADMIN)
-  async remove(@Param('id') id: string, @Body() dto: RejectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.remove(id, dto.reason, actor);
   }
 
   @Patch(':id/archive')
   @Roles(UserRole.SUPERADMIN)
-  async archive(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async archive(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.setArchived(id, true, actor);
   }
 
   @Patch(':id/unarchive')
   @Roles(UserRole.SUPERADMIN)
-  async unarchive(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async unarchive(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.setArchived(id, false, actor);
   }
 }

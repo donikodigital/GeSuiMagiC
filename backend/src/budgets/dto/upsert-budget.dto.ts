@@ -1,10 +1,12 @@
-import { IsNumber, IsPositive, IsString } from 'class-validator';
+//backend/src/budgets/dto/upsert-budget.dto.ts
+import { IsUUID } from 'class-validator';
+import { IsMoneyAmount } from '../../common/validators/money-amount.decorator';
 
 /** Budget previsionnel par categorie (section 43). */
 export class UpsertBudgetDto {
-  @IsString()
+  @IsUUID()
   categoryId: string;
 
-  @IsNumber() @IsPositive()
+  @IsMoneyAmount()
   amount: number;
 }

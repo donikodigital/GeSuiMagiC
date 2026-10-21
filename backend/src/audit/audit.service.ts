@@ -1,7 +1,7 @@
 //backend/src/audit/audit.service.ts
 import { Injectable } from '@nestjs/common';
-import { AuditAction, Prisma, PrismaClient, UserRole } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { AuditAction, Prisma, UserRole } from '@prisma/client';
+import { PrismaService, TxClient } from '../prisma/prisma.service';
 
 export interface AuditLogInput {
   userId?: string | null;
@@ -15,10 +15,6 @@ export interface AuditLogInput {
   ipAddress?: string | null;
   userAgent?: string | null;
 }
-
-// Type minimal du client transactionnel Prisma (voir PrismaService.runInTransaction).
-// IMPORTANT : derive de PrismaClient, pas de PrismaService (voir wallets.service.ts).
-type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 /**
  * Journal d'audit (section 17). INVIOLABLE : aucune methode update/delete
@@ -57,8 +53,7 @@ export class AuditService {
     entityId?: string;
     userId?: string;
     action?: AuditAction;
-    from?: Date;
-    to?: Date;
+    createdAt?: Prisma.DateTimeFilter;
     page: number;
     limit: number;
   }) {
@@ -67,10 +62,7 @@ export class AuditService {
       entityId: filters.entityId,
       userId: filters.userId,
       action: filters.action,
-      createdAt:
-        filters.from || filters.to
-          ? { gte: filters.from, lte: filters.to }
-          : undefined,
+      createdAt: filters.createdAt,
     };
 
     const [items, total] = await Promise.all([

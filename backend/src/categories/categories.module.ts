@@ -1,6 +1,7 @@
 //backend/src/categories/categories.module.ts
 import { Module } from '@nestjs/common';
-import { CategoriesController, CategoriesService } from './categories.controller';
+import { CategoriesController } from './categories.controller';
+import { CategoriesService } from './categories.service';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({

@@ -1,19 +1,11 @@
 //backend/src/audit/audit.controller.ts
 import { Controller, Get, Query } from '@nestjs/common';
-import { AuditAction, UserRole } from '@prisma/client';
+import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuditService } from './audit.service';
-import { PaginationQueryDto, buildPaginationMeta } from '../common/dto/pagination.dto';
-import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
-
-class AuditQueryDto extends PaginationQueryDto {
-  @IsOptional() @IsString() entityType?: string;
-  @IsOptional() @IsString() entityId?: string;
-  @IsOptional() @IsString() userId?: string;
-  @IsOptional() @IsEnum(AuditAction) action?: AuditAction;
-  @IsOptional() @IsDateString() from?: string;
-  @IsOptional() @IsDateString() to?: string;
-}
+import { buildPaginationMeta } from '../common/dto/pagination.dto';
+import { buildDateRange } from '../common/utils/date-range.util';
+import { AuditQueryDto } from './dto/audit-query.dto';
 
 /**
  * Le journal d'audit n'est consultable que par le superadmin (section 17 :
@@ -30,13 +22,13 @@ export class AuditController {
   async findAll(@Query() query: AuditQueryDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
+    // Une date seule ("2026-03-31") pour `to` inclut toute la journee.
     const { items, total } = await this.auditService.findAll({
       entityType: query.entityType,
       entityId: query.entityId,
       userId: query.userId,
       action: query.action,
-      from: query.from ? new Date(query.from) : undefined,
-      to: query.to ? new Date(query.to) : undefined,
+      createdAt: buildDateRange(query.from, query.to),
       page,
       limit,
     });

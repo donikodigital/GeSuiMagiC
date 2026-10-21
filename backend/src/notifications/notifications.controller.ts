@@ -1,5 +1,5 @@
 //backend/src/notifications/notifications.controller.ts
-import { Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
 import { PaginationQueryDto, buildPaginationMeta } from '../common/dto/pagination.dto';
@@ -16,15 +16,16 @@ export class NotificationsController {
     return { items, meta: buildPaginationMeta(page, limit, total) };
   }
 
-  @Patch(':id/read')
-  async markAsRead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    await this.notificationsService.markAsRead(user.userId, id);
-    return { marked: true };
-  }
-
+  // Declaree AVANT ':id/read' par lisibilite ; les deux chemins ne se chevauchent pas (1 vs 2 segments).
   @Patch('read-all')
   async markAllAsRead(@CurrentUser() user: AuthenticatedUser) {
     await this.notificationsService.markAllAsRead(user.userId);
+    return { marked: true };
+  }
+
+  @Patch(':id/read')
+  async markAsRead(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    await this.notificationsService.markAsRead(user.userId, id);
     return { marked: true };
   }
 }

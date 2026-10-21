@@ -1,5 +1,5 @@
 //backend/src/clients/clients.controller.ts
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -43,37 +43,37 @@ export class ClientsController {
 
   @Get(':id')
   @Roles(UserRole.SUPERADMIN)
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.clientsService.findOne(id);
   }
 
   @Patch(':id')
   @Roles(UserRole.SUPERADMIN)
-  async update(@Param('id') id: string, @Body() dto: UpdateClientDto, @CurrentUser() actor: AuthenticatedUser) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateClientDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.clientsService.update(id, dto, actor);
   }
 
   @Patch(':id/suspend')
   @Roles(UserRole.SUPERADMIN)
-  async suspend(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async suspend(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.clientsService.setSuspended(id, true, actor);
   }
 
   @Patch(':id/reactivate')
   @Roles(UserRole.SUPERADMIN)
-  async reactivate(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async reactivate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.clientsService.setSuspended(id, false, actor);
   }
 
   @Patch(':id/resend-invitation')
   @Roles(UserRole.SUPERADMIN)
-  async resendInvitation(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async resendInvitation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.clientsService.resendInvitation(id, actor);
   }
 
   @Delete(':id')
   @Roles(UserRole.SUPERADMIN)
-  async remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.clientsService.remove(id, actor);
   }
 }

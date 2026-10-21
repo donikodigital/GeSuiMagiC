@@ -1,6 +1,6 @@
 //frontend/src/services/clients.service.ts
 import { api } from '@/lib/api-client';
-import type { ClientProfile, PaginatedResponse, Project } from '@/types/models';
+import type { ClientProfile, PaginatedResponse } from '@/types/models';
 
 export interface CreateClientPayload {
   email: string;

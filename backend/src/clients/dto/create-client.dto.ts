@@ -1,94 +1,49 @@
 //backend/src/clients/dto/create-client.dto.ts
 import { Type } from 'class-transformer';
-import { IsDateString, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, MinLength, ValidateNested } from 'class-validator';
-
-class FirstProjectDto {
-  @IsString() @MinLength(2)
-  name: string;
-
-  @IsOptional() @IsString()
-  motif?: string;
-
-  @IsOptional() @IsString()
-  constructionType?: string;
-
-  @IsOptional() @IsString()
-  location?: string;
-
-  @IsOptional() @IsString()
-  city?: string;
-
-  @IsOptional() @IsString()
-  country?: string;
-
-  @IsOptional() @IsDateString()
-  startDate?: string;
-
-  @IsOptional() @IsDateString()
-  endDate?: string;
-
-  @IsOptional() @IsInt()
-  estimatedDurationDays?: number;
-
-  @IsOptional() @IsNumber()
-  surfaceArea?: number;
-
-  @IsOptional() @IsInt()
-  roomCount?: number;
-
-  @IsOptional() @IsString()
-  projectType?: string;
-
-  @IsOptional() @IsNumber()
-  estimatedCost?: number;
-
-  @IsNumber() @IsPositive()
-  budget: number;
-
-  @IsOptional() @IsString()
-  currency?: string;
-}
+import { IsEmail, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { CreateProjectDto } from '../../projects/dto/create-project.dto';
 
 /** Creation d'un client par le superadmin (section 7). */
 export class CreateClientDto {
   // Informations personnelles
-  @IsEmail()
+  @IsEmail() @MaxLength(254)
   email: string;
 
-  @IsString() @MinLength(1)
+  @IsString() @MinLength(1) @MaxLength(100)
   firstName: string;
 
-  @IsString() @MinLength(1)
+  @IsString() @MinLength(1) @MaxLength(100)
   lastName: string;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(30)
   phone?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(200)
   profession?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(500)
   address?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(200)
   city?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(200)
   country?: string;
 
   // Informations professionnelles
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(200)
   companyName?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(500)
   companyAddress?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional() @IsString() @MaxLength(100)
   taxId?: string;
 
-  // Premier projet (optionnel - section 7 "Premier projet")
+  // Premier projet (optionnel - section 7 "Premier projet"). Memes regles de validation qu'un projet cree normalement
+  // (avant : montants et textes non bornes, devise libre).
   @IsOptional()
   @ValidateNested()
-  @Type(() => FirstProjectDto)
-  firstProject?: FirstProjectDto;
+  @Type(() => CreateProjectDto)
+  firstProject?: CreateProjectDto;
 }

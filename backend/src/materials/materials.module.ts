@@ -1,6 +1,7 @@
 //backend/src/materials/materials.module.ts
 import { Module } from '@nestjs/common';
-import { MaterialsController, MaterialsService } from './materials.controller';
+import { MaterialsController } from './materials.controller';
+import { MaterialsService } from './materials.service';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({

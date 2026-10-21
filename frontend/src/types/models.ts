@@ -134,11 +134,13 @@ export interface Deposit {
   attachments?: Attachment[];
 }
 
+/** ownerClientId : null/absent = entree globale du catalogue ; sinon entree privee d'un client. */
 export interface ExpenseCategory {
   id: string;
   name: string;
   group?: string | null;
   isActive: boolean;
+  ownerClientId?: string | null;
 }
 
 export interface Material {
@@ -146,6 +148,7 @@ export interface Material {
   name: string;
   categoryId: string;
   isActive: boolean;
+  ownerClientId?: string | null;
   category?: ExpenseCategory;
   defaultUnit?: Unit | null;
 }
@@ -155,6 +158,7 @@ export interface Unit {
   name: string;
   symbol?: string | null;
   isActive: boolean;
+  ownerClientId?: string | null;
 }
 
 export interface Expense {

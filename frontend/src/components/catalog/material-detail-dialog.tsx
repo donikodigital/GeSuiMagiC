@@ -1,4 +1,4 @@
-// frontend/src/components/catalog/material-detail-dialog.tsx
+//frontend/src/components/catalog/material-detail-dialog.tsx
 'use client';
 
 import * as React from 'react';
@@ -17,7 +17,9 @@ import type { Material } from '@/types/models';
 
 export function MaterialDetailDialog({ open, onClose, material }: { open: boolean; onClose: () => void; material: Material }) {
   const queryClient = useQueryClient();
-  const { isSuperadmin } = useAuth();
+  const { isSuperadmin, isClient } = useAuth();
+  // Le superadmin gere tout ; un client gere uniquement SES entrees privees (ownerClientId renseigne) - jamais le catalogue global.
+  const canManage = isSuperadmin || (isClient && !!material.ownerClientId);
   const { data: categories } = useCategories(true);
   const { data: units } = useUnits(true);
   const [isEditing, setIsEditing] = React.useState(false);
@@ -113,7 +115,7 @@ export function MaterialDetailDialog({ open, onClose, material }: { open: boolea
         {material.defaultUnit?.name && <span className="text-xs text-ink-400">Unite par defaut : {material.defaultUnit.name}</span>}
       </div>
 
-      {!isSuperadmin ? (
+      {!canManage ? (
         <div className="flex justify-end border-t border-concrete pt-4">
           <Button variant="outline" onClick={onClose}>
             Fermer

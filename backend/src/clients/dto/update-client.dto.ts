@@ -1,16 +1,16 @@
 //backend/src/clients/dto/update-client.dto.ts
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /** Champs modifiables par le superadmin. */
 export class UpdateClientDto {
-  @IsOptional() @IsString() firstName?: string;
-  @IsOptional() @IsString() lastName?: string;
-  @IsOptional() @IsString() phone?: string;
-  @IsOptional() @IsString() profession?: string;
-  @IsOptional() @IsString() address?: string;
-  @IsOptional() @IsString() city?: string;
-  @IsOptional() @IsString() country?: string;
-  @IsOptional() @IsString() companyName?: string;
-  @IsOptional() @IsString() companyAddress?: string;
-  @IsOptional() @IsString() taxId?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(100) firstName?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(100) lastName?: string;
+  @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @IsOptional() @IsString() @MaxLength(200) profession?: string;
+  @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @IsOptional() @IsString() @MaxLength(200) city?: string;
+  @IsOptional() @IsString() @MaxLength(200) country?: string;
+  @IsOptional() @IsString() @MaxLength(200) companyName?: string;
+  @IsOptional() @IsString() @MaxLength(500) companyAddress?: string;
+  @IsOptional() @IsString() @MaxLength(100) taxId?: string;
 }

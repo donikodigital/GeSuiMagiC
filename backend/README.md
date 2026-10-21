@@ -1,3 +1,4 @@
+<!-- backend/README.md -->
 # Suivi de Chantier — Backend
 
 API NestJS + Prisma + PostgreSQL pour la plateforme de gestion financiere et
@@ -8,7 +9,7 @@ de suivi de chantier (cahier des charges v1.0).
 - **NestJS 10** + TypeScript
 - **Prisma 5** + PostgreSQL (pense pour **Neon**)
 - **JWT** (access + refresh token avec rotation) via Passport
-- **Resend** pour les emails transactionnels
+- **SMTP / nodemailer** pour les emails transactionnels (file d'envoi en arriere-plan)
 - **PDFKit** / **ExcelJS** pour les exports
 - Stockage fichiers compatible **S3 / R2 / Supabase Storage** (uploads directs via URL presignee, le backend ne stocke que les metadonnees)
 
@@ -16,31 +17,49 @@ de suivi de chantier (cahier des charges v1.0).
 
 ```bash
 npm install
-cp .env.example .env        # renseigner DATABASE_URL, DIRECT_URL, JWT_SECRET, etc.
-npm run prisma:migrate      # cree les tables
-npm run prisma:seed         # catalogue materiaux/categories/unites + superadmin par defaut
+cp .env.example .env        # renseigner DATABASE_URL, DIRECT_URL, JWT_*, SMTP_*, STORAGE_*
+npm run prisma:generate
+npx prisma migrate deploy   # applique les migrations (dont 20261020090000_catalogue_ownership)
+npm run prisma:seed         # catalogue global + premier superadmin (voir ci-dessous)
 npm run start:dev
 ```
 
-Le superadmin par defaut est cree par le seed (`SEED_SUPERADMIN_EMAIL` /
-`SEED_SUPERADMIN_PASSWORD` dans `.env`, valeurs par defaut sinon). **Changez
-ce mot de passe immediatement en production.**
+Toutes les variables sont documentees dans `.env.example`. En production,
+l'application refuse de demarrer si `JWT_SECRET` / `JWT_REFRESH_SECRET` sont
+identiques, font moins de 32 caracteres ou gardent la valeur `change-me`.
+
+### Premier superadmin (seed)
+
+Le seed **ne cree plus d'identifiants par defaut**. Pour creer le premier
+superadmin, definir dans l'environnement :
+
+```bash
+SEED_SUPERADMIN_EMAIL="admin@ton-domaine.com"
+SEED_SUPERADMIN_PASSWORD="..."   # 12 caracteres minimum, une lettre et un chiffre
+npm run prisma:seed
+```
+
+Si un SUPERADMIN existe deja, le seed ne touche pas aux comptes. Le mot de
+passe n'est jamais affiche. Retirez ces deux variables une fois le compte
+cree et changez le mot de passe a la premiere connexion.
 
 ## Structure
 
 ```
 src/
-  auth/            connexion, invitation securisee, refresh token, reset password
+  auth/            connexion, invitation securisee, refresh token (rotation), reset password
   clients/         gestion des clients (par le superadmin) + self-service
-  supervisors/      gestion des superviseurs (par le client)
+  supervisors/      gestion des superviseurs (par le client), renvoi d'invitation
   projects/         projets + affectation des superviseurs
   wallets/           LE MOTEUR FINANCIER : solde = depots valides - depenses validees
   deposits/          workflow PENDING -> APPROVED/REJECTED, verrouillage, correction admin
   expenses/           workflow d'approbation par seuil, verrouillage, correction admin
-  categories/ materials/ units/   catalogue administrable
+  categories/ materials/ units/   catalogue (global + entrees privees par client)
   budgets/            budget previsionnel par categorie + comparaison
   attachments/        justificatifs (upload direct vers le stockage objet)
-  notifications/      emails (Resend) + notifications in-app
+  storage/            URL presignees S3/R2, verification HeadObject, URL signees en lecture
+  notifications/      emails (SMTP) + notifications in-app
+  messages/           messagerie client <-> superviseur rattachee a une operation
   audit/               journal d'audit inviolable
   anomalies/           signalement client -> traitement superadmin
   settings/            reglages globaux / par projet
@@ -53,9 +72,13 @@ src/
 ### Le solde est toujours un calcul, jamais une valeur ecrite a la main
 
 `Wallet.balance` est recalcule dans **la meme transaction Postgres**
-(isolation `Serializable`) que toute operation qui le modifie : validation
-d'un depot, validation/annulation d'une depense, correction administrative.
-Voir `WalletsService.recompute()`.
+(isolation `Serializable`, avec nouvelle tentative sur conflit P2034) que
+toute operation qui le modifie : validation d'un depot, validation/annulation
+d'une depense, correction administrative. Voir `WalletsService.recompute()`.
+
+Les decisions (valider / rejeter) sont des mises a jour conditionnelles
+(`WHERE status = 'PENDING'`) : deux decisions concurrentes sur la meme
+operation ne peuvent pas toutes deux aboutir.
 
 ### ⚠️ Deviation assumee par rapport au cahier des charges d'origine (section 20)
 
@@ -73,34 +96,79 @@ depense est validee automatiquement ; au-dessus, elle passe en attente de
 confirmation du client — mais cette confirmation ne verifie jamais le
 solde, seulement le montant.
 
+Le seuil ne peut pas etre contourne par fractionnement : les depenses d'un
+meme auteur sur le meme projet sont cumulees sur une fenetre glissante
+(`EXPENSE_CUMULATIVE_WINDOW_HOURS`, 24 h par defaut).
+
 ### Verrouillage financier (section 15)
 
 Un depot ou une depense passe en `isLocked = true` des sa validation. Toute
 modification ulterieure doit passer par `correctAmount()` (section 16/53),
 qui cree une ligne `FinancialCorrection` et une entree d'audit avant de
 recalculer le solde — l'ancienne valeur n'est jamais silencieusement
-ecrasee.
+ecrasee. La devise d'un projet est figee des qu'il existe une operation.
+Un projet suspendu, termine ou archive n'accepte plus de nouveau depot ni
+de nouvelle depense.
 
 ### Securite multi-tenant (section 77)
 
 `ProjectAccessGuard` (dans `common/guards/`) verifie systematiquement la
 chaine complete **Utilisateur -> Client/Superviseur -> Projet** avant de
 laisser passer une requete sur une ressource de projet. Il ne suffit jamais
-de verifier `userId` seul.
+de verifier `userId` seul. Les filtres d'acces (`projectAccessFilter`,
+`catalogueReadFilter`) sont **fermes par defaut** : un role inconnu ne voit
+rien, jamais « tout ».
+
+### Catalogue : entrees globales et entrees privees
+
+Categories, materiaux et unites ont un `ownerClientId` :
+
+- `null` : entree **globale**, geree par le superadmin, visible de tous ;
+- un client : entree **privee** de ce client, visible de lui et de ses
+  superviseurs uniquement.
+
+Un client gere uniquement ses propres entrees, le superadmin gere tout, un
+superviseur peut creer mais pas modifier. L'unicite des noms est verifiee
+par le service (insensible a la casse, par proprietaire) car Postgres
+considere les `NULL` comme distincts dans un index unique. Un materiau
+global ne peut pas referencer une categorie ou une unite privee. Une entree
+invisible repond 404 ; visible mais non modifiable, 403 `CATALOGUE_FORBIDDEN`.
+
+Les entrees deja presentes avant la migration restent **globales**.
+
+### Authentification
+
+- Access token 15 min, refresh token 30 jours, secrets distincts, `jti` unique par jeton.
+- Le refresh token est hache (argon2) ; la rotation est atomique (compare-and-swap) et tolere un rejeu immediat (10 s) pour les onglets concurrents.
+- A chaque requete, l'utilisateur est recharge depuis la base (cache d'identite de 15 s) : un compte desactive ou un superviseur revoque perd l'acces sans attendre l'expiration du jeton.
+- Les jetons d'invitation et de reinitialisation sont a usage unique.
+- Temps de reponse egalise entre « email inconnu » et « mauvais mot de passe ».
 
 ## Tests
 
 ```bash
-npm test              # tests unitaires (money.util, expenses workflow)
+npm test              # tests unitaires (21 suites, ~300 tests)
+npx tsc --noEmit      # verification des types
 npm run test:e2e       # squelette e2e (a completer avec une base Postgres de test)
 ```
+
+Les tests unitaires mockent Prisma ; il faut simplement que `npm run prisma:generate`
+ait ete execute.
+
+## Operations
+
+- **Fichiers orphelins** : un fichier televerse mais jamais rattache a une
+  operation reste dans le bucket. Configurez une regle de cycle de vie
+  (expiration des objets non references / du prefixe temporaire) cote S3/R2.
+- **Superviseur revoque** : ses depots `PENDING` ne sont pas rejetes
+  automatiquement ; `revokeSupervisor` renvoie le nombre de depots en
+  attente (`pendingDeposits`) pour que le client les traite.
+- **Proxy** : derriere un reverse proxy, definir `TRUST_PROXY` (voir `.env.example`)
+  pour que le rate-limit et l'audit voient la vraie IP.
 
 ## Ce qui n'est PAS encore dans cette livraison (V2/V3 du cahier des charges)
 
 - Journal de chantier avec photos horodatees (section 33)
 - Etapes de progression du chantier avec dates/photos (section 60)
-- Messagerie client <-> superviseur attachee a une transaction (section 61)
 - Paiement Mobile Money (Orange Money / MTN), signature electronique, OCR de factures, IA (sections 80-81)
 - Application mobile native
-
-Le frontend (Next.js) sera livre dans un second temps.
