@@ -18,6 +18,12 @@ export interface JwtPayload {
   supervisorProfileId?: string;
 }
 
+/** passport-jwt exige un secret defini : on echoue explicitement plutot que de demarrer avec `undefined`. */
+export function requireSecret(value: string | undefined, name: string): string {
+  if (!value) throw new Error(`${name} est obligatoire.`);
+  return value;
+}
+
 /**
  * Le JWT ne sert plus qu'a prouver QUI appelle (claim `sub`). Le role, les
  * profils et surtout l'ETAT du compte sont relus en base (via un cache de
@@ -36,7 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('jwt.accessSecret'),
+      secretOrKey: requireSecret(config.get<string>('jwt.accessSecret'), 'JWT_SECRET'),
     });
   }
 

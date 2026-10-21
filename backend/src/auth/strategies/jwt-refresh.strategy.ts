@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { JwtPayload } from './jwt.strategy';
+import { JwtPayload, requireSecret } from './jwt.strategy';
 
 /**
  * Strategie dediee au refresh token (secret different de l'access token).
@@ -17,7 +17,7 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     super({
       jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('jwt.refreshSecret'),
+      secretOrKey: requireSecret(config.get<string>('jwt.refreshSecret'), 'JWT_REFRESH_SECRET'),
       passReqToCallback: true,
     });
   }

@@ -6,7 +6,7 @@ de suivi de chantier (cahier des charges v1.0).
 
 ## Stack
 
-- **NestJS 10** + TypeScript
+- **NestJS 11** + TypeScript (Node.js 20 minimum)
 - **Prisma 5** + PostgreSQL (pense pour **Neon**)
 - **JWT** (access + refresh token avec rotation) via Passport
 - **SMTP / nodemailer** pour les emails transactionnels (file d'envoi en arriere-plan)
@@ -147,7 +147,7 @@ Les entrees deja presentes avant la migration restent **globales**.
 ## Tests
 
 ```bash
-npm test              # tests unitaires (21 suites, ~300 tests)
+npm test              # tests unitaires + test de fumee de l'application (~320 tests)
 npx tsc --noEmit      # verification des types
 npm run test:e2e       # squelette e2e (a completer avec une base Postgres de test)
 ```
@@ -158,8 +158,10 @@ ait ete execute.
 ## Operations
 
 - **Fichiers orphelins** : un fichier televerse mais jamais rattache a une
-  operation reste dans le bucket. Configurez une regle de cycle de vie
-  (expiration des objets non references / du prefixe temporaire) cote S3/R2.
+  operation reste dans le bucket. Une regle de cycle de vie seule ne peut pas
+  les distinguer des justificatifs enregistres (meme prefixe) : il faut un
+  nettoyage qui compare le bucket a la table `Attachment`, ou un dossier
+  temporaire `tmp/` avec expiration.
 - **Superviseur revoque** : ses depots `PENDING` ne sont pas rejetes
   automatiquement ; `revokeSupervisor` renvoie le nombre de depots en
   attente (`pendingDeposits`) pour que le client les traite.

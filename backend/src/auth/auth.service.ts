@@ -1,7 +1,7 @@
 //backend/src/auth/auth.service.ts
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { addHours, addMinutes } from 'date-fns';
 import { randomUUID } from 'crypto';
@@ -338,13 +338,13 @@ export class AuthService {
     // du refresh token (et la detection de rejeu) sans effet.
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.get<string>('jwt.accessSecret'),
-      expiresIn: this.config.get<string>('jwt.accessExpiresIn'),
+      expiresIn: this.config.get<string>('jwt.accessExpiresIn') as JwtSignOptions['expiresIn'],
       jwtid: randomUUID(),
     });
 
     const refreshToken = await this.jwt.signAsync(payload, {
       secret: this.config.get<string>('jwt.refreshSecret'),
-      expiresIn: this.config.get<string>('jwt.refreshExpiresIn'),
+      expiresIn: this.config.get<string>('jwt.refreshExpiresIn') as JwtSignOptions['expiresIn'],
       jwtid: randomUUID(),
     });
 
