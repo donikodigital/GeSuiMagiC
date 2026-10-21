@@ -1,4 +1,5 @@
-// app/(app)/projects/[id]/layout.tsx - v1.3
+// frontend/src/app/(app)/projects/[id]/layout.tsx - v1.4
+// v1.4 : onglets "Presences" (calendrier des jours travailles) et "Alimentation" (suivi des repas des ouvriers).
 // Remplacement de la barre d'onglets horizontale par une grille de cartes
 // cliquables sur mobile uniquement, via <ProjectTabCards>. La barre
 // desktop d'origine est conservee a l'identique, simplement masquee sous
@@ -26,6 +27,8 @@ import {
   Users,
   AlertTriangle,
   Settings,
+  CalendarDays,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { useProject } from '@/hooks/use-projects';
 import { useAuth } from '@/hooks/use-auth';
@@ -54,6 +57,8 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
     { label: 'Dépenses', href: `${base}/expenses`, icon: ArrowUpFromLine },
     { label: 'Budgets', href: `${base}/budgets`, icon: Wallet },
     { label: 'Documents', href: `${base}/documents`, icon: FolderOpen },
+    { label: 'Présences', href: `${base}/attendance`, icon: CalendarDays },
+    { label: 'Alimentation', href: `${base}/meals`, icon: UtensilsCrossed },
     ...(isClient || isSuperadmin ? [{ label: 'Superviseurs', href: `${base}/supervisors`, icon: Users }] : []),
     ...(isClient ? [{ label: 'Anomalies', href: `${base}/anomalies`, icon: AlertTriangle }] : []),
     ...(isClient || isSuperadmin ? [{ label: 'Réglages', href: `${base}/settings`, icon: Settings }] : []),

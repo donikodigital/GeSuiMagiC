@@ -14,6 +14,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { UpdateProjectFinancialsDto } from './dto/update-project-financials.dto';
 import { ProjectQueryDto } from './dto/project-query.dto';
+import { createDefaultPhases } from '../attendance/attendance.constants';
 
 /** Verifie la coherence des dates d'un projet (fin >= debut). */
 function assertDateRange(start?: Date | null, end?: Date | null) {
@@ -76,6 +77,7 @@ export class ProjectsService {
     });
 
     await this.wallets.createForProject(created.id, currency, tx);
+    await createDefaultPhases(tx, created.id);
 
     await this.audit.log(
       {

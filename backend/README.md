@@ -60,6 +60,8 @@ src/
   storage/            URL presignees S3/R2, verification HeadObject, URL signees en lecture
   notifications/      emails (SMTP) + notifications in-app
   messages/           messagerie client <-> superviseur rattachee a une operation
+  attendance/         etapes du chantier + calendrier des jours travailles (effectif par jour)
+  meals/              alimentation des ouvriers : enveloppe mensuelle, reliquat, reports, demandes de comptes
   audit/               journal d'audit inviolable
   anomalies/           signalement client -> traitement superadmin
   settings/            reglages globaux / par projet
@@ -144,10 +146,16 @@ Les entrees deja presentes avant la migration restent **globales**.
 - Les jetons d'invitation et de reinitialisation sont a usage unique.
 - Temps de reponse egalise entre « email inconnu » et « mauvais mot de passe ».
 
+### Jours travailles et alimentation des ouvriers
+
+- Le superviseur declare chaque jour (`PUT /projects/:id/work-days/:date`) : travaille ou non, nombre d'ouvriers, etape du chantier. Il ne peut saisir que les 14 derniers jours et jamais un jour futur ; le superadmin corrige tout. Chaque saisie est tracee dans l'audit.
+- Les etapes (`/projects/:id/phases`) sont propres a chaque projet ; `POST .../phases/defaults` ajoute Fondation, Murs, Toiture, etc. (cree aussi a la creation d'un projet).
+- Alimentation (`/projects/:id/meals/...`) : le client definit l'enveloppe du mois et le cout d'un repas par ouvrier et par jour. Justifie = jours-ouvriers x cout du repas ; depense = depenses validees de la categorie liee ; reliquat = disponible - depense. Le client peut demander des comptes au superviseur (notification + email) et reporter le reliquat sur un mois suivant (plafonne, transactionnel, trace).
+
 ## Tests
 
 ```bash
-npm test              # tests unitaires + test de fumee de l'application (~320 tests)
+npm test              # tests unitaires + test de fumee de l'application (~390 tests)
 npx tsc --noEmit      # verification des types
 npm run test:e2e       # squelette e2e (a completer avec une base Postgres de test)
 ```

@@ -289,3 +289,132 @@ export interface PaginatedResponse<T> {
   items: T[];
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
+
+// ----------------------------------------------------------------------------
+// Suivi de chantier : etapes, jours travailles, alimentation des ouvriers
+// ----------------------------------------------------------------------------
+
+export interface ProjectPhase {
+  id: string;
+  projectId: string;
+  name: string;
+  position: number;
+  isActive: boolean;
+  /** Jours travailles sur cette etape depuis le debut du chantier. */
+  workedDays: number;
+  /** Jours-ouvriers cumules (somme des effectifs). */
+  workerDays: number;
+  firstDate: string | null;
+  lastDate: string | null;
+}
+
+export interface WorkDay {
+  id: string;
+  /** Date calendaire AAAA-MM-JJ. */
+  date: string;
+  isWorked: boolean;
+  workersCount: number;
+  phaseId: string | null;
+  phaseName: string | null;
+  note: string | null;
+  recordedById: string;
+  updatedAt: string;
+}
+
+export interface AttendanceStats {
+  workedDays: number;
+  notWorkedDays: number;
+  recordedDays: number;
+  workerDays: number;
+}
+
+export interface MonthAttendance extends AttendanceStats {
+  month: string;
+  daysInMonth: number;
+  elapsedDays: number;
+  unrecordedDays: number;
+  /** Part des jours ecoules travailles, en %. */
+  attendanceRate: number;
+}
+
+export interface WorkMonthView {
+  month: string;
+  days: WorkDay[];
+  summary: MonthAttendance;
+}
+
+export interface WorkSummary {
+  totals: AttendanceStats & { firstWorkedDate: string | null; lastWorkedDate: string | null };
+  byPhase: { phaseId: string; name: string; isActive: boolean; workedDays: number; workerDays: number; firstDate: string | null; lastDate: string | null }[];
+  byMonth: (AttendanceStats & { month: string })[];
+}
+
+export interface UpsertWorkDayPayload {
+  isWorked: boolean;
+  workersCount?: number;
+  phaseId?: string;
+  note?: string;
+}
+
+export type MealRequestStatus = 'OPEN' | 'ANSWERED' | 'CLOSED';
+
+export interface MealAccountRequest {
+  id: string;
+  projectId: string;
+  month: string;
+  message: string;
+  status: MealRequestStatus;
+  response: string | null;
+  requestedById: string;
+  answeredById: string | null;
+  answeredAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+}
+
+export interface MealEnvelope {
+  id: string;
+  allocatedAmount: string;
+  mealUnitCost: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  note: string | null;
+  updatedAt: string;
+}
+
+export interface MealAmounts {
+  allocatedAmount: string;
+  mealUnitCost: string;
+  carriedInAmount: string;
+  carriedOutAmount: string;
+  /** Enveloppe + reports recus - reports envoyes. */
+  availableAmount: string;
+  /** Jours-ouvriers x cout d'un repas : ce que les presences justifient. */
+  justifiedAmount: string;
+  spentAmount: string;
+  pendingAmount: string;
+  /** Disponible - depenses validees. */
+  remainingAmount: string;
+  /** Depense - justifie (positif = depense au-dela des presences). */
+  gapAmount: string;
+  carryableAmount: string;
+}
+
+export interface MealMonthReport {
+  month: string;
+  currency: string;
+  envelope: MealEnvelope | null;
+  attendance: MonthAttendance;
+  amounts: MealAmounts;
+  carryOversIn: { id: string; fromMonth: string; amount: string; reason: string | null; createdAt: string }[];
+  carryOversOut: { id: string; toMonth: string; amount: string; reason: string | null; createdAt: string }[];
+  requests: MealAccountRequest[];
+  openRequestsCount: number;
+}
+
+export interface UpsertMealEnvelopePayload {
+  allocatedAmount: number;
+  mealUnitCost: number;
+  categoryId?: string;
+  note?: string;
+}

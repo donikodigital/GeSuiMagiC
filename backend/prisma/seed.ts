@@ -290,6 +290,9 @@ async function seedCatalogue() {
 
   // Categorie generique pour les elements personnalises (section 30)
   await ensureCategory('Element personnalise', 'Autre');
+
+  // Categorie d'alimentation des ouvriers : rattachee aux enveloppes mensuelles du suivi des repas
+  await ensureCategory('Alimentation', 'Main-d\'oeuvre');
 }
 
 async function seedSuperadmin() {

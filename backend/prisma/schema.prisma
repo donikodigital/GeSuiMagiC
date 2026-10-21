@@ -104,6 +104,8 @@ enum NotificationType {
   ANOMALY_UPDATED
   MESSAGE_RECEIVED
   BROADCAST_RECEIVED
+  MEAL_ACCOUNT_REQUESTED
+  MEAL_ACCOUNT_ANSWERED
 }
 
 enum AuditAction {
@@ -302,6 +304,13 @@ model Project {
   anomalies                 Anomaly[]
   settings                  Setting[]
 
+  // Suivi des jours travailles et de l'alimentation des ouvriers
+  phases                    ProjectPhase[]
+  workDays                  WorkDay[]
+  mealEnvelopes             MealEnvelope[]
+  mealCarryOvers            MealCarryOver[]
+  mealAccountRequests       MealAccountRequest[]
+
   @@index([clientId])
   @@index([status])
   @@map("projects")
@@ -423,6 +432,7 @@ model ExpenseCategory {
   budgets    Budget[]
 
   @@unique([ownerClientId, name])
+  mealEnvelopes MealEnvelope[]
   @@index([ownerClientId])
   @@map("expense_categories")
 }
@@ -742,4 +752,123 @@ model Setting {
 
   @@unique([key, projectId])
   @@map("settings")
+}
+
+// ----------------------------------------------------------------------------
+// SUIVI DES JOURS TRAVAILLES ET ALIMENTATION DES OUVRIERS
+// ----------------------------------------------------------------------------
+
+enum MealRequestStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+// Etape du chantier (Fondation, Murs, Toiture, Carrelage, Finitions...), configurable par projet.
+model ProjectPhase {
+  id        String    @id @default(uuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name      String
+  position  Int       @default(0)
+  isActive  Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  workDays  WorkDay[]
+
+  @@unique([projectId, name])
+  @@index([projectId, position])
+  @@map("project_phases")
+}
+
+// Une ligne par projet et par jour calendaire : jour travaille ou non, effectif present, etape en cours.
+// Pas de ligne = jour non renseigne (different d'un jour explicitement non travaille).
+model WorkDay {
+  id           String        @id @default(uuid())
+  projectId    String
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  date         DateTime      @db.Date
+  isWorked     Boolean
+  workersCount Int           @default(0)
+  phaseId      String?
+  // NoAction (et non Restrict) : la suppression d'un projet supprime etapes ET jours dans la meme instruction.
+  phase        ProjectPhase? @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  note         String?
+
+  recordedById String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([projectId, date])
+  @@index([phaseId])
+  @@map("work_days")
+}
+
+// Enveloppe d'alimentation d'un mois (ex: 1 000 000 GNF envoyes pour le mois) + cout d'un repas par ouvrier et par jour.
+model MealEnvelope {
+  id              String           @id @default(uuid())
+  projectId       String
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  month           String // "YYYY-MM"
+  allocatedAmount Decimal          @db.Decimal(18, 2)
+  mealUnitCost    Decimal          @db.Decimal(18, 2)
+
+  // Categorie de depenses qui represente l'alimentation (pour comparer avec les depenses reelles)
+  categoryId      String?
+  category        ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  note            String?
+
+  createdById     String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([projectId, month])
+  @@map("meal_envelopes")
+}
+
+// Report valide par le client d'un reliquat d'un mois vers un mois suivant.
+model MealCarryOver {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fromMonth   String // "YYYY-MM"
+  toMonth     String // "YYYY-MM"
+  amount      Decimal  @db.Decimal(18, 2)
+  reason      String?
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, fromMonth])
+  @@index([projectId, toMonth])
+  @@map("meal_carry_overs")
+}
+
+// Demande de comptes du client au superviseur sur l'alimentation d'un mois.
+model MealAccountRequest {
+  id            String            @id @default(uuid())
+  projectId     String
+  project       Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  month         String // "YYYY-MM"
+  message       String
+  status        MealRequestStatus @default(OPEN)
+  response      String?
+
+  requestedById String
+  answeredById  String?
+  answeredAt    DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([projectId, month])
+  @@index([projectId, status])
+  @@map("meal_account_requests")
 }

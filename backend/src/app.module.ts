@@ -32,6 +32,8 @@ import { AnomaliesModule } from './anomalies/anomalies.module';
 import { SettingsModule } from './settings/settings.module';
 import { ReportsModule } from './reports/reports.module';
 import { MessagesModule } from './messages/messages.module';
+import { AttendanceModule } from './attendance/attendance.module';
+import { MealsModule } from './meals/meals.module';
 
 @Module({
   imports: [
@@ -65,6 +67,8 @@ import { MessagesModule } from './messages/messages.module';
     SettingsModule,
     ReportsModule,
     MessagesModule,
+    AttendanceModule,
+    MealsModule,
   ],
   providers: [
     // Ordre d'execution : Throttler -> JwtAuth (peuple request.user) -> Roles (RBAC sur request.user.role)

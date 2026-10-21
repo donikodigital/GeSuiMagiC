@@ -137,6 +137,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 export const api = {
   get: <T>(path: string, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'GET' }),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'POST', body }),
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'PUT', body }),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) => apiFetch<T>(path, { ...options, method: 'PATCH', body }),
   // body optionnel : la plupart des DELETE n'en ont pas besoin, mais certains
   // (ex. suppression logique d'un depot/depense) exigent un motif dans le corps.
