@@ -8,6 +8,7 @@ import { StorageService } from '../storage/storage.service';
 import { AppException } from '../common/exceptions/app.exception';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { projectAccessFilter } from '../common/utils/project-access.util';
+import { AttachmentEntityType } from './attachment.constants';
 import { PresignUploadDto } from './dto/presign-upload.dto';
 import { CreateAttachmentDto } from './dto/create-attachment.dto';
 
@@ -15,6 +16,8 @@ export interface AttachmentTarget {
   projectId?: string;
   depositId?: string;
   expenseId?: string;
+  entityType?: string;
+  entityId?: string;
 }
 
 /** Nombre maximal de pieces jointes renvoyees pour une liste non filtree (superadmin). */
@@ -52,6 +55,9 @@ export class AttachmentsService {
     if (!dto.projectId && !dto.depositId && !dto.expenseId) {
       throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un justificatif doit être rattaché à un projet, un dépôt ou une dépense.');
     }
+    if (!!dto.entityType !== !!dto.entityId) {
+      throw AppException.badRequest('ATTACHMENT_ENTITY_INCOMPLETE', "entityType et entityId doivent être fournis ensemble.");
+    }
 
     // Meme isolation que la lecture : on ne peut attacher un fichier qu'a une cible que l'on peut soi-meme consulter.
     // Toutes les cibles fournies (projet, depot, depense) doivent appartenir au MEME projet.
@@ -63,6 +69,15 @@ export class AttachmentsService {
       throw AppException.badRequest('INVALID_FILE_URL', "L'adresse du fichier est invalide.");
     }
     const fileUrl = this.storage.fileUrlForKey(key);
+
+    let capturedAt: Date | undefined;
+    if (dto.capturedAt) {
+      capturedAt = new Date(dto.capturedAt);
+      // Tolerance de 5 minutes pour les horloges d'appareils legerement en avance.
+      if (Number.isNaN(capturedAt.getTime()) || capturedAt.getTime() > Date.now() + 5 * 60 * 1000) {
+        throw AppException.badRequest('INVALID_CAPTURED_AT', "La date de prise de vue ne peut pas être dans le futur.");
+      }
+    }
 
     const alreadyUsed = await this.prisma.attachment.findFirst({ where: { fileUrl }, select: { id: true } });
     if (alreadyUsed) throw AppException.conflict('FILE_ALREADY_REGISTERED', 'Ce fichier est deja enregistre.');
@@ -81,6 +96,9 @@ export class AttachmentsService {
         projectId: dto.projectId,
         depositId: dto.depositId,
         expenseId: dto.expenseId,
+        entityType: dto.entityType,
+        entityId: dto.entityId,
+        capturedAt,
         uploadedById: actor.userId,
       },
     });
@@ -91,7 +109,7 @@ export class AttachmentsService {
       action: 'CREATE',
       entityType: 'Attachment',
       entityId: attachment.id,
-      newValue: { fileName: attachment.fileName, kind: dto.kind, projectId: dto.projectId, depositId: dto.depositId, expenseId: dto.expenseId },
+      newValue: { fileName: attachment.fileName, kind: dto.kind, projectId: dto.projectId, depositId: dto.depositId, expenseId: dto.expenseId, entityType: dto.entityType, entityId: dto.entityId },
     });
 
     return this.withReadUrl(attachment);
@@ -102,11 +120,33 @@ export class AttachmentsService {
     await this.resolveTarget(filters, actor, actor.role !== 'SUPERADMIN');
 
     const attachments = await this.prisma.attachment.findMany({
-      where: { projectId: filters.projectId, depositId: filters.depositId, expenseId: filters.expenseId },
+      where: { projectId: filters.projectId, depositId: filters.depositId, expenseId: filters.expenseId, entityType: filters.entityType, entityId: filters.entityId },
       orderBy: { createdAt: 'desc' },
       take: MAX_LIST_SIZE,
     });
     return Promise.all(attachments.map((a) => this.withReadUrl(a)));
+  }
+
+  /**
+   * Pieces jointes de plusieurs objets du chantier d'un meme type (photos d'un journal, bons de livraison...).
+   * Pas de controle d'acces ici : l'appelant a deja verifie l'acces aux objets (donc au projet).
+   */
+  async listForEntities(entityType: AttachmentEntityType, entityIds: string[]) {
+    const byEntity = new Map<string, Array<Pick<Attachment, 'id' | 'fileName' | 'fileUrl' | 'mimeType' | 'kind' | 'capturedAt' | 'createdAt'> & { entityId: string }>>();
+    if (entityIds.length === 0) return byEntity;
+
+    const rows = await this.prisma.attachment.findMany({
+      where: { entityType, entityId: { in: entityIds } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, fileName: true, fileUrl: true, mimeType: true, kind: true, capturedAt: true, createdAt: true, entityId: true },
+    });
+    for (const row of rows) {
+      const view = await this.withReadUrl({ ...row, entityId: row.entityId! });
+      const list = byEntity.get(view.entityId) ?? [];
+      list.push(view);
+      byEntity.set(view.entityId, list);
+    }
+    return byEntity;
   }
 
   async remove(id: string, actor: AuthenticatedUser) {
@@ -174,6 +214,16 @@ export class AttachmentsService {
       projectIds.add(expense.projectId);
     }
 
+    if (target.entityType && target.entityId) {
+      // Un objet du chantier doit etre designe avec SON projet : le controle d'acces repose sur ce projet.
+      if (!target.projectId) {
+        throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Le projet est requis pour rattacher un fichier à cet élément.');
+      }
+      const owner = await this.entityProjectId(target.entityType, target.entityId);
+      if (!owner) throw missing('Élément');
+      projectIds.add(owner);
+    }
+
     if (projectIds.size === 0) {
       if (requireTarget) {
         throw AppException.badRequest('ATTACHMENT_TARGET_REQUIRED', 'Un projet, un dépôt ou une dépense valide est requis.');
@@ -191,5 +241,40 @@ export class AttachmentsService {
     });
     if (!project) throw missing('Projet');
     return projectId;
+  }
+
+  /** Projet auquel appartient un objet du chantier (null s'il n'existe pas). */
+  private async entityProjectId(entityType: string, entityId: string): Promise<string | null> {
+    const where = { where: { id: entityId } };
+    switch (entityType as AttachmentEntityType) {
+      case 'SiteLog':
+        return (await this.prisma.siteLog.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'Snag':
+        return (await this.prisma.snag.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'Reception':
+        return (await this.prisma.reception.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'ChangeOrder':
+        return (await this.prisma.changeOrder.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'SupplierQuote':
+        return (await this.prisma.supplierQuote.findUnique({ ...where, select: { lot: { select: { projectId: true } } } }))?.lot.projectId ?? null;
+      case 'Contract':
+        return (await this.prisma.contract.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'ProgressStatement':
+        return (await this.prisma.progressStatement.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'ContractPayment':
+        return (await this.prisma.contractPayment.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'Delivery':
+        return (await this.prisma.delivery.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'StockMovement':
+        return (await this.prisma.stockMovement.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'ProjectDocument':
+        return (await this.prisma.projectDocument.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'PhaseProgressUpdate':
+        return (await this.prisma.phaseProgressUpdate.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      case 'PurchaseOrder':
+        return (await this.prisma.purchaseOrder.findUnique({ ...where, select: { projectId: true } }))?.projectId ?? null;
+      default:
+        return null;
+    }
   }
 }

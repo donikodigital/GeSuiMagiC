@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationType, Prisma } from '@prisma/client';
 import * as nodemailer from 'nodemailer';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppException } from '../common/exceptions/app.exception';
+import { E164_REGEX, MessagingService } from './messaging.service';
 
 export interface SendNotificationInput {
   userId: string;
@@ -12,6 +14,7 @@ export interface SendNotificationInput {
   message: string;
   emailHtml?: string; // si absent, pas d'email envoye (notification in-app uniquement)
   emailSubject?: string;
+  emailAttachments?: { filename: string; content: Buffer; contentType: string }[];
   meta?: Record<string, unknown>;
 }
 
@@ -21,7 +24,38 @@ interface EmailJob {
   type: NotificationType;
   subject: string;
   html: string;
+  attachments?: { filename: string; content: Buffer; contentType: string }[];
 }
+
+/**
+ * Notifications egalement envoyees par WhatsApp / SMS aux utilisateurs qui ont active ces canaux :
+ * uniquement ce qui demande une action ou une decision rapide (pas les accuses de lecture, ni les invitations).
+ */
+export const MESSAGING_NOTIFICATION_TYPES: ReadonlySet<NotificationType> = new Set<NotificationType>([
+  'DEPOSIT_CREATED',
+  'DEPOSIT_APPROVED',
+  'DEPOSIT_REJECTED',
+  'EXPENSE_PENDING_APPROVAL',
+  'EXPENSE_APPROVED',
+  'EXPENSE_REJECTED',
+  'LOW_BALANCE_ALERT',
+  'BUDGET_EXCEEDED_ALERT',
+  'MEAL_ACCOUNT_REQUESTED',
+  'MEAL_ACCOUNT_ANSWERED',
+  'CHANGE_ORDER_REQUESTED',
+  'CHANGE_ORDER_DECIDED',
+  'SNAG_REPORTED',
+  'PROGRESS_SUBMITTED',
+  'PROGRESS_DECIDED',
+  'TECH_REVIEW_REQUESTED',
+  'DOCUMENT_EXPIRING',
+  'ATTENDANCE_REMINDER',
+  'STATEMENT_SUBMITTED',
+  'STATEMENT_DECIDED',
+  'LOCATION_ALERT',
+  'LOW_STOCK_ALERT',
+  'SCHEDULE_ALERT',
+]);
 
 /** Envois SMTP simultanes maximum. */
 const EMAIL_CONCURRENCY = 3;
@@ -61,6 +95,7 @@ export class NotificationsService implements OnApplicationShutdown {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly messaging: MessagingService,
   ) {
     const user = this.config.get<string>('smtp.user');
     const password = this.config.get<string>('smtp.password');
@@ -115,8 +150,11 @@ export class NotificationsService implements OnApplicationShutdown {
           type: input.type,
           subject: input.emailSubject ?? input.title,
           html: input.emailHtml,
+          attachments: input.emailAttachments,
         });
       });
+
+      await this.dispatchMessaging(inputs);
     } catch (err) {
       this.logger.error(`Echec d'enregistrement de ${inputs.length} notification(s)`, err instanceof Error ? err.stack : String(err));
       // Volontairement pas de rethrow : la notification est un effet secondaire, pas une condition bloquante.
@@ -165,7 +203,7 @@ export class NotificationsService implements OnApplicationShutdown {
           return;
         }
 
-        await this.transporter.sendMail({ from: this.fromEmail, to: user.email, subject: job.subject, html: job.html });
+        await this.transporter.sendMail({ from: this.fromEmail, to: user.email, subject: job.subject, html: job.html, attachments: job.attachments });
         await this.prisma.notification.update({ where: { id: job.notificationId }, data: { emailSent: true } });
         return;
       } catch (err) {
@@ -180,6 +218,88 @@ export class NotificationsService implements OnApplicationShutdown {
         await sleep(attempt * 2000);
       }
     }
+  }
+
+  /** WhatsApp / SMS pour les destinataires qui les ont actives. Ne leve jamais d'exception. */
+  private async dispatchMessaging(inputs: SendNotificationInput[]): Promise<void> {
+    try {
+      const eligible = inputs.filter((i) => MESSAGING_NOTIFICATION_TYPES.has(i.type));
+      if (eligible.length === 0) return;
+      if (!this.messaging.isAvailable('WHATSAPP') && !this.messaging.isAvailable('SMS')) return;
+
+      const users = await this.prisma.user.findMany({
+        where: {
+          id: { in: [...new Set(eligible.map((i) => i.userId))] },
+          messagingPhone: { not: null },
+          OR: [{ whatsappOptIn: true }, { smsOptIn: true }],
+        },
+        select: { id: true, messagingPhone: true, whatsappOptIn: true, smsOptIn: true },
+      });
+      if (users.length === 0) return;
+      const byId = new Map(users.map((u) => [u.id, u]));
+
+      const jobs: Array<() => Promise<unknown>> = [];
+      for (const input of eligible) {
+        const user = byId.get(input.userId);
+        if (!user?.messagingPhone) continue;
+        const text = `${input.title}\n${input.message}`;
+        // WhatsApp en priorite ; le SMS ne sert que si WhatsApp n'est pas active (jamais les deux pour le meme message).
+        if (user.whatsappOptIn && this.messaging.isAvailable('WHATSAPP')) {
+          jobs.push(() => this.messaging.send('WHATSAPP', user.messagingPhone!, text));
+        } else if (user.smsOptIn && this.messaging.isAvailable('SMS')) {
+          jobs.push(() => this.messaging.send('SMS', user.messagingPhone!, text));
+        }
+      }
+      for (let i = 0; i < jobs.length; i += 5) {
+        await Promise.allSettled(jobs.slice(i, i + 5).map((job) => job()));
+      }
+    } catch (err) {
+      this.logger.warn(`Echec de la distribution WhatsApp/SMS : ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async getPreferences(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { messagingPhone: true, whatsappOptIn: true, smsOptIn: true },
+    });
+    if (!user) throw AppException.notFound('Utilisateur');
+    return {
+      ...user,
+      whatsappAvailable: this.messaging.isAvailable('WHATSAPP'),
+      smsAvailable: this.messaging.isAvailable('SMS'),
+    };
+  }
+
+  async updatePreferences(userId: string, dto: { messagingPhone?: string | null; whatsappOptIn?: boolean; smsOptIn?: boolean }) {
+    const current = await this.prisma.user.findUnique({ where: { id: userId }, select: { messagingPhone: true } });
+    if (!current) throw AppException.notFound('Utilisateur');
+
+    const phone = dto.messagingPhone === undefined ? current.messagingPhone : dto.messagingPhone;
+    if (phone !== null && !E164_REGEX.test(phone)) {
+      throw AppException.badRequest('INVALID_PHONE', 'Le numéro doit être au format international, par exemple +224620000000.');
+    }
+    // Pas de numero : aucun canal ne peut rester actif.
+    const whatsappOptIn = phone ? (dto.whatsappOptIn ?? undefined) : false;
+    const smsOptIn = phone ? (dto.smsOptIn ?? undefined) : false;
+    if (phone && (dto.whatsappOptIn === true || dto.smsOptIn === true) && !current.messagingPhone && dto.messagingPhone === undefined) {
+      throw AppException.badRequest('PHONE_REQUIRED', "Renseignez d'abord votre numéro pour activer WhatsApp ou les SMS.");
+    }
+
+    await this.prisma.user.update({ where: { id: userId }, data: { messagingPhone: phone, whatsappOptIn, smsOptIn } });
+    return this.getPreferences(userId);
+  }
+
+  /** Message de test vers le numero de l'utilisateur, pour verifier qu'il recoit bien les alertes. */
+  async sendTestMessage(userId: string, channel: 'WHATSAPP' | 'SMS') {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { messagingPhone: true } });
+    if (!user?.messagingPhone) throw AppException.badRequest('PHONE_REQUIRED', "Renseignez d'abord votre numéro.");
+    if (!this.messaging.isAvailable(channel)) {
+      throw AppException.conflict('CHANNEL_UNAVAILABLE', `Le canal ${channel === 'WHATSAPP' ? 'WhatsApp' : 'SMS'} n'est pas configuré sur ce serveur.`);
+    }
+    const sent = await this.messaging.send(channel, user.messagingPhone, 'Suivi de Chantier : ceci est un message de test. Vous recevrez ici vos alertes importantes.');
+    if (!sent) throw AppException.conflict('SEND_FAILED', "Le message n'a pas pu être envoyé. Vérifiez le numéro puis réessayez.");
+    return { sent: true };
   }
 
   async listForUser(userId: string, page: number, limit: number) {

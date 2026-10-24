@@ -1,5 +1,5 @@
 //backend/src/projects/dto/update-project-financials.dto.ts
-import { IsBoolean, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateIf } from 'class-validator';
 import { IsMoneyAmount, MAX_INPUT_AMOUNT } from '../../common/validators/money-amount.decorator';
 
 /**
@@ -19,4 +19,15 @@ export class UpdateProjectFinancialsDto {
 
   // 0 = toute depense doit etre confirmee par le client.
   @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 }) @Min(0) @Max(MAX_INPUT_AMOUNT) expenseApprovalThreshold?: number;
+
+  // Controles anti-fraude. `null` desactive le controle ; 0 = toujours exige.
+  /** Au-dessus de ce montant, la depense exige un justificatif (facture, recu, bon de livraison) pour etre validee. */
+  @IsOptional() @ValidateIf((_, value) => value !== null)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 }) @Min(0) @Max(MAX_INPUT_AMOUNT)
+  receiptRequiredAbove?: number | null;
+
+  /** Au-dessus de ce montant, la depense passe d'abord par la validation technique (conducteur de travaux / architecte). */
+  @IsOptional() @ValidateIf((_, value) => value !== null)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 }) @Min(0) @Max(MAX_INPUT_AMOUNT)
+  technicalReviewAbove?: number | null;
 }

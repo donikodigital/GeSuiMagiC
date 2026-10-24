@@ -73,6 +73,22 @@ export default () => {
       maxFileSizeMb: parseInt(process.env.STORAGE_MAX_FILE_SIZE_MB || '15', 10),
     },
 
+    // Canaux WhatsApp / SMS (Twilio). Sans identifiants, ces canaux sont simplement indisponibles.
+    messaging: {
+      twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
+      twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
+      // Expediteurs : "whatsapp:+14155238886" (WhatsApp) et numero ou identifiant alphanumerique (SMS)
+      whatsappFrom: process.env.TWILIO_WHATSAPP_FROM,
+      smsFrom: process.env.TWILIO_SMS_FROM,
+      timeoutMs: parseInt(process.env.MESSAGING_TIMEOUT_MS || '5000', 10),
+    },
+
+    // Taches planifiees (rapport mensuel, alertes d'expiration, rappels de saisie) declenchees par un planificateur externe
+    // (Vercel Cron, cron-job.org...) via GET /api/cron/daily avec l'en-tete "Authorization: Bearer <CRON_SECRET>".
+    cron: {
+      secret: process.env.CRON_SECRET,
+    },
+
     defaultCurrency: process.env.DEFAULT_CURRENCY || 'GNF',
 
     // Anti-fractionnement : une depense auto-validee (sous le seuil) passe en

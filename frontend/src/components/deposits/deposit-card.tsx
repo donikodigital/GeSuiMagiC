@@ -1,7 +1,6 @@
-// frontend/src/components/deposits/deposit-card.tsx - v1.1
-// Meme correction que ExpenseCard : "truncate" retire sur le libelle
-// (visible sur "Achats ma...", "Achats agr..."), remplace par line-clamp-2.
-// Montant/badge/icone en shrink-0 pour ne jamais se faire ecraser.
+//frontend/src/components/deposits/deposit-card.tsx
+// Carte de depot : libelle sur 2 lignes maximum, montant/badge/icone sans compression, et mention du montant
+// envoye lorsque le depot vient de l'etranger.
 
 'use client';
 
@@ -38,6 +37,12 @@ export function DepositCard({ deposit, onClick }: { deposit: Deposit; onClick: (
           <StatusBadge label={depositStatusMeta[deposit.status].label} tone={tone} className="shrink-0" />
         </div>
         <p className="mt-0.5 text-xs text-ink-400">{new Date(deposit.date).toLocaleDateString('fr-FR')}</p>
+        {deposit.originalAmount && deposit.originalCurrency && (
+          <p className="mt-0.5 text-xs text-blueprint-600">
+            Envoyé : {formatMoney(deposit.originalAmount, deposit.originalCurrency)}
+            {deposit.exchangeRate ? ` · taux ${Number(deposit.exchangeRate).toLocaleString('fr-FR', { maximumFractionDigits: 2 })}` : ''}
+          </p>
+        )}
       </div>
 
       <p className="shrink-0 font-ledger text-sm font-semibold text-ink-900">{formatMoney(deposit.amount, deposit.currency)}</p>

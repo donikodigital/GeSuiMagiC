@@ -18,4 +18,6 @@ export class UpdateExpenseDto {
   @IsOptional() @IsString() @MaxLength(100) invoiceReference?: string;
   @IsOptional() @IsIn(['PAID_FULL', 'PARTIAL', 'CREDIT']) paymentStatus?: ExpensePaymentStatus;
   @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 }) @Max(MAX_INPUT_AMOUNT) amountPaidToSupplier?: number;
+  @IsOptional() @IsUUID() phaseId?: string | null;
+  @IsOptional() @IsUUID() supplierId?: string | null;
 }

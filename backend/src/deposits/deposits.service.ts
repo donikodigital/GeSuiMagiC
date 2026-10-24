@@ -13,6 +13,7 @@ import { buildPaginationMeta } from '../common/dto/pagination.dto';
 import { formatMoney, roundMoney } from '../common/utils/money.util';
 import { buildDateRange } from '../common/utils/date-range.util';
 import { assertProjectAcceptsFinancialOperations } from '../common/utils/project-status.util';
+import { analyzeForeignDeposit, MAX_RATE_GAP_PERCENT, summarizeByCurrency } from './currency.calc';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { DepositQueryDto } from './dto/deposit-query.dto';
 import { UpdateDepositDto } from './dto/update-deposit.dto';
@@ -70,7 +71,14 @@ export class DepositsService {
       throw AppException.badRequest('SUPERVISOR_NOT_ASSIGNED', "Ce superviseur n'est pas affecté à ce projet.");
     }
 
+    // L'architecte controle le chantier mais ne gere pas d'argent.
+    const position = (assignment as { position?: string }).position;
+    if (position === 'ARCHITECT') {
+      throw AppException.badRequest('SUPERVISOR_NOT_ALLOWED', "L'architecte ne reçoit pas de dépôt : choisissez le superviseur ou le conducteur de travaux.");
+    }
+
     const amount = roundMoney(dto.amount);
+    const foreign = this.resolveForeignFields(dto, project.currency, amount);
 
     // Depot + audit dans la meme transaction (avant : deux ecritures independantes).
     const deposit = await this.prisma.runInTransaction(async (tx) => {
@@ -86,6 +94,7 @@ export class DepositsService {
           paymentMethod: dto.paymentMethod,
           reference: dto.reference,
           observation: dto.observation,
+          ...foreign.data,
           status: 'PENDING',
           createdById: actor.userId,
         },
@@ -97,7 +106,13 @@ export class DepositsService {
           action: 'CREATE',
           entityType: 'Deposit',
           entityId: created.id,
-          newValue: { amount: amount.toString(), projectId, supervisorId: dto.supervisorId, status: 'PENDING' },
+          newValue: {
+            amount: amount.toString(),
+            projectId,
+            supervisorId: dto.supervisorId,
+            status: 'PENDING',
+            ...(foreign.analysis ? { originalAmount: dto.originalAmount, originalCurrency: dto.originalCurrency, exchangeRate: dto.exchangeRate, gapPercent: foreign.analysis.gapPercent } : {}),
+          },
         },
         tx,
       );
@@ -120,7 +135,64 @@ export class DepositsService {
       }),
     );
 
-    return deposit;
+    return this.decorate(deposit);
+  }
+
+  /** Controle la coherence des champs de change (tout ou rien) et calcule l'analyse. */
+  private resolveForeignFields(dto: CreateDepositDto, projectCurrency: string, amount: Prisma.Decimal) {
+    const provided = [dto.originalAmount, dto.originalCurrency, dto.exchangeRate].filter((v) => v !== undefined);
+    if (provided.length === 0) {
+      if (dto.transferFees !== undefined) {
+        throw AppException.badRequest('FOREIGN_FIELDS_INCOMPLETE', "Les frais de transfert vont avec le montant d'origine, sa devise et le taux.");
+      }
+      return { data: {}, analysis: null };
+    }
+    if (provided.length !== 3) {
+      throw AppException.badRequest('FOREIGN_FIELDS_INCOMPLETE', "Pour un envoi de l'étranger, renseignez le montant envoyé, sa devise et le taux de change.");
+    }
+    if (dto.originalCurrency === projectCurrency) {
+      throw AppException.badRequest('SAME_CURRENCY', 'La devise d\'origine est celle du projet : aucune conversion à enregistrer.');
+    }
+    const analysis = analyzeForeignDeposit({ amount, originalAmount: dto.originalAmount!, exchangeRate: dto.exchangeRate!, transferFees: dto.transferFees });
+    if (Math.abs(analysis.gapPercent) > MAX_RATE_GAP_PERCENT) {
+      throw AppException.badRequest(
+        'AMOUNT_RATE_MISMATCH',
+        `Le montant crédité (${formatMoney(amount, projectCurrency)}) s'écarte de ${Math.abs(analysis.gapPercent)} % du montant attendu (${formatMoney(analysis.expectedAmount, projectCurrency)} = montant envoyé × taux). Vérifiez le taux.`,
+      );
+    }
+    return {
+      data: {
+        originalAmount: roundMoney(dto.originalAmount!),
+        originalCurrency: dto.originalCurrency,
+        exchangeRate: dto.exchangeRate,
+        transferFees: dto.transferFees !== undefined ? roundMoney(dto.transferFees) : null,
+      },
+      analysis,
+    };
+  }
+
+  /** Ajoute l'analyse du change (taux effectif frais compris, ecart) aux depots envoyes de l'etranger. */
+  private decorate<T extends { amount: Prisma.Decimal; originalAmount: Prisma.Decimal | null; exchangeRate: Prisma.Decimal | null; transferFees: Prisma.Decimal | null }>(deposit: T) {
+    if (!deposit.originalAmount || !deposit.exchangeRate) return { ...deposit, foreign: null };
+    return {
+      ...deposit,
+      foreign: analyzeForeignDeposit({ amount: deposit.amount, originalAmount: deposit.originalAmount, exchangeRate: deposit.exchangeRate, transferFees: deposit.transferFees }),
+    };
+  }
+
+  /** Total envoye, frais et taux moyen par devise d'origine (depots valides seulement). */
+  async currencySummary(projectId: string, actor: AuthenticatedUser) {
+    const where: Prisma.DepositWhereInput = { projectId, status: 'APPROVED', originalCurrency: { not: null } };
+    if (actor.role === 'SUPERVISOR') {
+      if (!actor.supervisorProfileId) throw AppException.forbiddenProjectAccess();
+      where.supervisorId = actor.supervisorProfileId;
+    }
+    const rows = await this.prisma.deposit.findMany({
+      where,
+      select: { originalCurrency: true, originalAmount: true, exchangeRate: true, transferFees: true, amount: true },
+    });
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { currency: true } });
+    return { projectCurrency: project?.currency ?? null, currencies: summarizeByCurrency(rows) };
   }
 
   async findAllForProject(projectId: string, query: DepositQueryDto, actor: AuthenticatedUser) {
@@ -156,7 +228,7 @@ export class DepositsService {
       this.prisma.deposit.count({ where }),
     ]);
 
-    return { items, meta: buildPaginationMeta(page, limit, total) };
+    return { items: items.map((d) => this.decorate(d)), meta: buildPaginationMeta(page, limit, total) };
   }
 
   /**
@@ -174,7 +246,7 @@ export class DepositsService {
       },
     });
     if (!deposit) throw AppException.notFound('Dépôt');
-    return deposit;
+    return this.decorate(deposit);
   }
 
   async findOne(id: string, actor: AuthenticatedUser) {
@@ -365,6 +437,9 @@ export class DepositsService {
       if (dto.paymentMethod !== undefined) labels.push('Mode de versement');
       if (dto.reference !== undefined) labels.push('Référence');
       if (dto.observation !== undefined) labels.push('Observation');
+      if (dto.originalAmount !== undefined || dto.originalCurrency !== undefined || dto.exchangeRate !== undefined || dto.transferFees !== undefined) {
+        labels.push('Change et frais de transfert');
+      }
 
       await tx.deposit.update({
         where: { id },
@@ -375,6 +450,10 @@ export class DepositsService {
           paymentMethod: dto.paymentMethod,
           reference: dto.reference,
           observation: dto.observation,
+          originalAmount: dto.originalAmount === undefined ? undefined : dto.originalAmount === null ? null : roundMoney(dto.originalAmount),
+          originalCurrency: dto.originalCurrency,
+          exchangeRate: dto.exchangeRate,
+          transferFees: dto.transferFees === undefined ? undefined : dto.transferFees === null ? null : roundMoney(dto.transferFees),
         },
       });
 

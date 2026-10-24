@@ -1,19 +1,6 @@
-// frontend/src/app/(app)/projects/[id]/settings/page.tsx - v1.5
-// Ajout de la carte "Zone sensible" : bouton de suppression definitive du
-// projet, visible pour CLIENT et SUPERADMIN (memes roles que le reste de
-// cette page, deja garde par RequireRole) UNIQUEMENT si le projet n'a
-// aucun depot ni aucune depense enregistre. Verification faite via
-// useDeposits/useExpenses avec limit:1 (on ne lit que meta.total, pas les
-// items) - meme critere exact que ProjectsService.remove cote backend
-// (compte les lignes quel que soit leur statut), plutot que le resume
-// financier qui ne reflete que les montants deja valides et masquerait
-// des depots/depenses encore en attente. Tant que l'un des deux comptes
-// est en cours de chargement, le bouton reste cache par prudence (pas de
-// canDelete=true premature). Confirmation obligatoire via ConfirmDialog
-// (meme composant que la suppression de client) - action irreversible,
-// redirige vers /projects apres succes. Aucun changement sur
-// ProjectStatusCard / ProjectFinancialsCard.
-// ============================================================================
+//frontend/src/app/(app)/projects/[id]/settings/page.tsx
+// Reglages du chantier : statut, validation des depenses, controles anti-fraude (justificatif obligatoire,
+// validation technique), position GPS du chantier, et zone sensible (suppression d'un projet sans operation).
 
 'use client';
 
@@ -35,6 +22,7 @@ import { PageSpinner, ErrorState } from '@/components/ui/misc';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ApiError } from '@/lib/api-client';
 import { RequireRole } from '@/components/shared/require-role';
+import { ControlThresholdsCard, SiteLocationCard } from '@/components/site/settings/site-controls-cards';
 import { projectStatusMeta } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { ProjectStatus } from '@/types/models';
@@ -345,6 +333,8 @@ function ProjectSettingsPageContent() {
     <div className="mx-auto max-w-lg space-y-6">
       <ProjectStatusCard projectId={params.id} currentStatus={project.status} />
       <ProjectFinancialsCard project={project} projectId={params.id} />
+      <ControlThresholdsCard project={project} />
+      <SiteLocationCard project={project} />
       <ProjectDangerZoneCard projectId={params.id} projectName={project.name} />
     </div>
   );

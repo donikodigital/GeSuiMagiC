@@ -74,6 +74,58 @@ describe('DepositsService', () => {
     prisma.projectSupervisor.findFirst.mockResolvedValue({ id: 'ps-1' });
   });
 
+  describe('create — envoi depuis l\'etranger et fonction du beneficiaire', () => {
+    const base = { supervisorId: 'sup-1', amount: 9_500_000 };
+    const clientActor = { userId: 'u-cli', role: 'CLIENT', clientProfileId: 'cli-1' };
+
+    beforeEach(() => {
+      prisma.deposit.create.mockImplementation(({ data }: any) => ({ id: 'd-new', currency: 'GNF', ...data }));
+      prisma.projectSupervisor.findFirst.mockResolvedValue({ id: 'ps-1', position: 'SUPERVISOR', supervisor: { userId: 'u-sup', firstName: 'Mamadou' } });
+    });
+
+    it('enregistre le montant envoye, la devise, le taux et les frais', async () => {
+      await service.create('p-1', { ...base, originalAmount: 1000, originalCurrency: 'EUR', exchangeRate: 9500, transferFees: 20 } as any, clientActor as any);
+
+      const data = prisma.deposit.create.mock.calls[0][0].data;
+      expect(data.originalCurrency).toBe('EUR');
+      expect(data.exchangeRate).toBe(9500);
+      expect(data.originalAmount.toString()).toBe('1000');
+      expect(data.transferFees.toString()).toBe('20');
+      expect(data.amount.toString()).toBe('9500000');
+    });
+
+    it('refuse des champs de change incomplets', async () => {
+      await expect(service.create('p-1', { ...base, originalAmount: 1000 } as any, clientActor as any)).rejects.toMatchObject({ code: 'FOREIGN_FIELDS_INCOMPLETE' });
+      await expect(service.create('p-1', { ...base, transferFees: 10 } as any, clientActor as any)).rejects.toMatchObject({ code: 'FOREIGN_FIELDS_INCOMPLETE' });
+      expect(prisma.deposit.create).not.toHaveBeenCalled();
+    });
+
+    it('refuse une devise d\'origine identique a celle du projet', async () => {
+      await expect(
+        service.create('p-1', { ...base, originalAmount: 1000, originalCurrency: 'GNF', exchangeRate: 1 } as any, clientActor as any),
+      ).rejects.toMatchObject({ code: 'SAME_CURRENCY' });
+    });
+
+    it('refuse un montant credite tres eloigne du montant envoye x taux (faute de frappe probable)', async () => {
+      await expect(
+        service.create('p-1', { ...base, amount: 3_000_000, originalAmount: 1000, originalCurrency: 'EUR', exchangeRate: 9500 } as any, clientActor as any),
+      ).rejects.toMatchObject({ code: 'AMOUNT_RATE_MISMATCH' });
+    });
+
+    it('accepte un ecart raisonnable (spread bancaire) sans le bloquer', async () => {
+      await expect(
+        service.create('p-1', { ...base, amount: 9_100_000, originalAmount: 1000, originalCurrency: 'EUR', exchangeRate: 9500 } as any, clientActor as any),
+      ).resolves.toBeDefined();
+    });
+
+    it("refuse de verser a un architecte", async () => {
+      prisma.projectSupervisor.findFirst.mockResolvedValue({ id: 'ps-1', position: 'ARCHITECT', supervisor: { userId: 'u-arch', firstName: 'Aïssata' } });
+
+      await expect(service.create('p-1', base as any, clientActor as any)).rejects.toMatchObject({ code: 'SUPERVISOR_NOT_ALLOWED' });
+      expect(prisma.deposit.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('approve', () => {
     it("refuse si l'acteur n'est pas le superviseur beneficiaire de ce depot", async () => {
       prisma.deposit.findUnique.mockResolvedValue(pendingDeposit());

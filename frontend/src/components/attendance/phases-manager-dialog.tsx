@@ -2,12 +2,13 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Pencil, Plus, Trash2, Wallet, X } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { FormField, Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { usePhaseActions } from '@/hooks/use-attendance';
+import { useSitePermissions } from '@/hooks/use-site';
 import type { ProjectPhase } from '@/types/models';
 
 interface PhasesManagerDialogProps {
@@ -20,6 +21,8 @@ interface PhasesManagerDialogProps {
 /** Ajout, renommage, ordre, desactivation et suppression des etapes du chantier. */
 export function PhasesManagerDialog({ open, onClose, projectId, phases }: PhasesManagerDialogProps) {
   const { create, update, reorder, remove } = usePhaseActions(projectId);
+  const permissions = useSitePermissions(projectId);
+  const [planningId, setPlanningId] = React.useState<string | null>(null);
   const [newName, setNewName] = React.useState('');
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editingName, setEditingName] = React.useState('');
@@ -29,6 +32,7 @@ export function PhasesManagerDialog({ open, onClose, projectId, phases }: Phases
     if (!open) {
       setNewName('');
       setEditingId(null);
+      setPlanningId(null);
     }
   }, [open]);
 
@@ -65,8 +69,8 @@ export function PhasesManagerDialog({ open, onClose, projectId, phases }: Phases
           {phases.length === 0 && <p className="rounded-card border border-dashed border-concrete-dark px-4 py-6 text-center text-sm text-ink-500">Aucune étape pour le moment.</p>}
 
           {phases.map((phase, index) => (
+            <React.Fragment key={phase.id}>
             <div
-              key={phase.id}
               className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 shadow-card ${phase.isActive ? 'border-concrete bg-white' : 'border-concrete bg-concrete-light/60'}`}
             >
               <div className="flex shrink-0 flex-col">
@@ -131,6 +135,11 @@ export function PhasesManagerDialog({ open, onClose, projectId, phases }: Phases
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+                    {(permissions.owner || permissions.isSiteManager) && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setPlanningId(planningId === phase.id ? null : phase.id)} aria-label="Budget et planning" title="Budget et planning prévus">
+                        <Wallet className="h-4 w-4 text-blueprint-600" />
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
@@ -148,6 +157,18 @@ export function PhasesManagerDialog({ open, onClose, projectId, phases }: Phases
                 )}
               </div>
             </div>
+            {planningId === phase.id && (
+              <PhaseBudgetPlanning
+                phase={phase}
+                canEditBudget={permissions.owner}
+                saving={update.isPending}
+                onSave={async (payload) => {
+                  await update.mutateAsync({ phaseId: phase.id, payload });
+                  setPlanningId(null);
+                }}
+              />
+            )}
+            </React.Fragment>
           ))}
         </div>
 
@@ -180,5 +201,59 @@ export function PhasesManagerDialog({ open, onClose, projectId, phases }: Phases
         loading={remove.isPending}
       />
     </>
+  );
+}
+
+
+/** Budget prevu (client) et dates prevues (client, conducteur de travaux) d'une etape. */
+function PhaseBudgetPlanning({
+  phase,
+  canEditBudget,
+  saving,
+  onSave,
+}: {
+  phase: ProjectPhase;
+  canEditBudget: boolean;
+  saving: boolean;
+  onSave: (payload: { budgetAmount?: number | null; plannedStart?: string | null; plannedEnd?: string | null }) => Promise<void>;
+}) {
+  const [budget, setBudget] = React.useState(phase.budgetAmount ? String(parseFloat(phase.budgetAmount)) : '');
+  const [start, setStart] = React.useState(phase.plannedStart ? phase.plannedStart.slice(0, 10) : '');
+  const [end, setEnd] = React.useState(phase.plannedEnd ? phase.plannedEnd.slice(0, 10) : '');
+  const invalid = !!start && !!end && start > end;
+
+  return (
+    <form
+      className="-mt-1 space-y-3 rounded-xl border border-blueprint-100 bg-blueprint-50/50 px-4 py-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (invalid) return;
+        await onSave({
+          ...(canEditBudget ? { budgetAmount: budget === '' ? null : Number(budget) } : {}),
+          plannedStart: start || null,
+          plannedEnd: end || null,
+        });
+      }}
+    >
+      <p className="text-xs font-medium text-blueprint-700">Budget et planning prévus de « {phase.name} »</p>
+      {canEditBudget && (
+        <FormField label="Budget de l'étape" hint="Laissez vide pour ne pas fixer de budget.">
+          <Input type="number" inputMode="decimal" min={0} step="0.01" value={budget} onChange={(e) => setBudget(e.target.value)} />
+        </FormField>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Début prévu">
+          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+        </FormField>
+        <FormField label="Fin prévue" error={invalid ? 'La fin précède le début.' : undefined}>
+          <Input type="date" value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)} />
+        </FormField>
+      </div>
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" loading={saving} disabled={invalid}>
+          Enregistrer
+        </Button>
+      </div>
+    </form>
   );
 }

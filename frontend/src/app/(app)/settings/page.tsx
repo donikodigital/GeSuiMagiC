@@ -1,11 +1,6 @@
-// frontend/src/app/(app)/settings/page.tsx - v3.2
-// Fix : l'email etait accole au nom dans CardDescription (className=
-// "truncate"), et se faisait couper des que le nom+email depassait la
-// largeur disponible (visible sur "jallow..."). L'email sort du sous-titre
-// et recoit sa propre ProfileRow (icone Mail), comme Telephone/Profession/
-// Adresse/Ville - meme traitement applique a ClientProfileCard et
-// SupervisorProfileCard pour rester coherent. Le sous-titre ne garde que
-// le nom complet. Aucun changement de logique/mutations.
+//frontend/src/app/(app)/settings/page.tsx
+// Reglages du compte : profil (client, superviseur ou superadministrateur), alertes WhatsApp / SMS et mot de passe.
+// L'email a sa propre ligne (ProfileRow) pour ne jamais etre coupe a cote du nom.
 
 'use client';
 
@@ -26,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { FormField, Input } from '@/components/ui/input';
 import { ApiError } from '@/lib/api-client';
+import { NotificationChannelsCard } from '@/components/site/settings/notification-channels-card';
 
 const passwordSchema = z
   .object({
@@ -68,6 +64,8 @@ export default function SettingsPage() {
       {isClient && <ClientProfileCard />}
       {isSupervisor && <SupervisorProfileCard />}
       {isSuperadmin && <SuperadminProfileCard />}
+
+      <NotificationChannelsCard />
 
       <PasswordCard />
     </div>

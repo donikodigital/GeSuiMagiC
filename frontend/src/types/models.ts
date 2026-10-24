@@ -92,10 +92,19 @@ export interface Project {
   autoApproveExpenses: boolean;
   expenseApprovalThreshold: string;
   progressPercent: number;
+  /** Position GPS du chantier et rayon (m) de controle de presence des saisies geolocalisees. */
+  siteLatitude?: string | null;
+  siteLongitude?: string | null;
+  geoFenceMeters?: number;
+  /** Au-dela de ces montants : justificatif obligatoire / validation technique prealable. */
+  receiptRequiredAbove?: string | null;
+  technicalReviewAbove?: string | null;
+  /** Fonction de l'utilisateur connecte sur CE chantier. */
+  siteRole?: 'SUPERADMIN' | 'CLIENT' | 'SUPERVISOR' | 'SITE_MANAGER' | 'ARCHITECT' | null;
   createdAt: string;
   wallet?: Wallet;
   client?: { id: string; firstName: string; lastName: string; phone?: string | null };
-  supervisors?: { supervisor: SupervisorProfile }[];
+  supervisors?: { position?: 'SUPERVISOR' | 'SITE_MANAGER' | 'ARCHITECT'; supervisor: SupervisorProfile }[];
 }
 
 export interface FinancialSummary {
@@ -125,6 +134,13 @@ export interface Deposit {
   reference?: string | null;
   observation?: string | null;
   status: DepositStatus;
+  /** Depot envoye dans une autre devise : montant d'origine, taux applique et frais de transfert. */
+  originalAmount?: string | null;
+  originalCurrency?: string | null;
+  exchangeRate?: string | null;
+  transferFees?: string | null;
+  /** Analyse du change calculee par le serveur pour un depot envoye de l'etranger. */
+  foreign?: { expectedAmount: string; gapPercent: number; totalPaidOriginal: string; effectiveRate: string; feesPercent: number } | null;
   rejectionReason?: string | null;
   isLocked: boolean;
   isArchived: boolean;
@@ -176,6 +192,19 @@ export interface Expense {
   observation?: string | null;
   supplier?: string | null;
   invoiceReference?: string | null;
+  phaseId?: string | null;
+  supplierId?: string | null;
+  contractId?: string | null;
+  /** Validation technique prealable (conducteur de travaux / architecte) au-dessus du seuil du projet. */
+  techReviewStatus?: 'NOT_REQUIRED' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  techReviewedAt?: string | null;
+  techReviewNote?: string | null;
+  /** Justificatif obligatoire (montant au-dessus du seuil du projet) et present ou non. */
+  receiptRequired?: boolean;
+  hasReceipt?: boolean;
+  latitude?: string | null;
+  longitude?: string | null;
+  isOffSite?: boolean;
   status: ExpenseStatus;
   rejectionReason?: string | null;
   paymentStatus: ExpensePaymentStatus;
@@ -218,6 +247,10 @@ export interface Attachment {
   projectId?: string | null;
   depositId?: string | null;
   expenseId?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+  /** Instant de la prise de vue (photo horodatee). */
+  capturedAt?: string | null;
   createdAt: string;
 }
 
@@ -300,6 +333,11 @@ export interface ProjectPhase {
   name: string;
   position: number;
   isActive: boolean;
+  /** Budget prevu, planning prevu et avancement valide (0-100) de l'etape. */
+  budgetAmount?: string | null;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  progressPercent?: number;
   /** Jours travailles sur cette etape depuis le debut du chantier. */
   workedDays: number;
   /** Jours-ouvriers cumules (somme des effectifs). */
@@ -317,6 +355,8 @@ export interface WorkDay {
   phaseId: string | null;
   phaseName: string | null;
   note: string | null;
+  stopReason?: 'RAIN' | 'HOLIDAY' | 'MATERIAL_SHORTAGE' | 'EQUIPMENT_BREAKDOWN' | 'PAYMENT_DELAY' | 'SAFETY' | 'OTHER' | null;
+  isOffSite?: boolean;
   recordedById: string;
   updatedAt: string;
 }
@@ -354,6 +394,9 @@ export interface UpsertWorkDayPayload {
   workersCount?: number;
   phaseId?: string;
   note?: string;
+  stopReason?: 'RAIN' | 'HOLIDAY' | 'MATERIAL_SHORTAGE' | 'EQUIPMENT_BREAKDOWN' | 'PAYMENT_DELAY' | 'SAFETY' | 'OTHER';
+  latitude?: number;
+  longitude?: number;
 }
 
 export type MealRequestStatus = 'OPEN' | 'ANSWERED' | 'CLOSED';

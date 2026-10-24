@@ -41,6 +41,7 @@ function useInvalidateAttendance(projectId: string) {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['attendance', projectId] });
     queryClient.invalidateQueries({ queryKey: ['meals', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['site', projectId] });
   };
 }
 
@@ -91,7 +92,7 @@ export function usePhaseActions(projectId: string) {
   });
 
   const update = useMutation({
-    mutationFn: ({ phaseId, payload }: { phaseId: string; payload: { name?: string; isActive?: boolean } }) =>
+    mutationFn: ({ phaseId, payload }: { phaseId: string; payload: { name?: string; isActive?: boolean; budgetAmount?: number | null; plannedStart?: string | null; plannedEnd?: string | null } }) =>
       attendanceService.updatePhase(projectId, phaseId, payload),
     onSuccess: invalidate,
     onError: fail('Impossible de modifier cette étape.'),

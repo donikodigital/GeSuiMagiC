@@ -1,4 +1,4 @@
-// frontend/src/services/deposits.service.ts - v1.1
+//frontend/src/services/deposits.service.ts
 // Ajout de update/remove/archive/unarchive, reserves au superadmin cote
 // backend (le service ne verifie rien lui-meme, c'est le controller qui filtre).
 
@@ -14,6 +14,11 @@ export interface CreateDepositPayload {
   paymentMethod?: PaymentMethod;
   reference?: string;
   observation?: string;
+  /** Envoi de l'etranger : montant envoye, devise, taux applique et frais de transfert (tout ou rien, hors frais). */
+  originalAmount?: number;
+  originalCurrency?: string;
+  exchangeRate?: number;
+  transferFees?: number;
 }
 
 export interface UpdateDepositPayload {

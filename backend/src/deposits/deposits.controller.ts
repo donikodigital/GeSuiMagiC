@@ -27,6 +27,12 @@ export class ProjectDepositsController {
   async findAll(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() query: DepositQueryDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.depositsService.findAllForProject(projectId, query, actor);
   }
+
+  /** Total envoye, frais et taux moyen par devise d'origine. */
+  @Get('currency-summary')
+  async currencySummary(@Param('projectId', ParseUUIDPipe) projectId: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.depositsService.currencySummary(projectId, actor);
+  }
 }
 
 @Controller('deposits')

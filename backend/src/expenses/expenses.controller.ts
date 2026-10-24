@@ -12,6 +12,8 @@ import { CancelExpenseDto } from './dto/cancel-expense.dto';
 import { CorrectExpenseDto } from './dto/correct-expense.dto';
 import { UpdateExpensePaymentDto } from './dto/update-expense-payment.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
+import { AllocateExpenseDto } from './dto/allocate-expense.dto';
+import { TechnicalReviewDto } from './dto/technical-review.dto';
 
 @Controller('projects/:projectId/expenses')
 @UseGuards(ProjectAccessGuard)
@@ -50,6 +52,19 @@ export class ExpensesController {
   @Roles(UserRole.CLIENT)
   async reject(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.expensesService.reject(id, dto.reason, actor);
+  }
+
+  /** Validation technique (conducteur de travaux / architecte / superadmin) : controlee dans le service. */
+  @Post(':id/technical-review')
+  @Roles(UserRole.SUPERVISOR, UserRole.SUPERADMIN)
+  async technicalReview(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TechnicalReviewDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.expensesService.technicalReview(id, dto, actor);
+  }
+
+  /** Rattache la depense a une etape et/ou a un fournisseur (sans toucher aux montants). */
+  @Patch(':id/allocation')
+  async allocate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AllocateExpenseDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.expensesService.setAllocation(id, dto, actor);
   }
 
   @Post(':id/cancel')

@@ -9,7 +9,7 @@ export const attendanceService = {
 
   createDefaultPhases: (projectId: string) => api.post<ProjectPhase[]>(`/projects/${projectId}/phases/defaults`),
 
-  updatePhase: (projectId: string, phaseId: string, payload: { name?: string; isActive?: boolean }) =>
+  updatePhase: (projectId: string, phaseId: string, payload: { name?: string; isActive?: boolean; budgetAmount?: number | null; plannedStart?: string | null; plannedEnd?: string | null }) =>
     api.patch<ProjectPhase>(`/projects/${projectId}/phases/${phaseId}`, payload),
 
   reorderPhases: (projectId: string, orderedIds: string[]) => api.patch<ProjectPhase[]>(`/projects/${projectId}/phases/reorder`, { orderedIds }),

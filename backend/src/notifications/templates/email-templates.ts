@@ -179,4 +179,16 @@ export const emailTemplates = {
       url,
       'Voir le détail',
     ),
+
+  /** Avis generique : titre, texte (echappe) et bouton. Evite un template par type d'evenement. */
+  notice: (title: string, body: string, url?: string, ctaLabel = 'Ouvrir sur la plateforme') =>
+    baseLayout(title, `<p style="white-space:pre-wrap;">${esc(body)}</p>`, url, ctaLabel),
+
+  monthlyReport: (clientName: string, projectName: string, monthLabel: string, url: string) =>
+    baseLayout(
+      `Rapport mensuel — ${monthLabel}`,
+      `<p>Bonjour ${esc(clientName)},</p><p>Voici le rapport mensuel du projet <strong>${esc(projectName)}</strong> pour ${esc(monthLabel)} : dépenses, présences sur le chantier, alimentation des ouvriers, avancement et points à surveiller.</p><p>Le rapport PDF est joint à cet email.</p>`,
+      url,
+      'Voir le projet',
+    ),
 };

@@ -19,14 +19,17 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Paperclip, Trash2, UploadCloud, FileText, Image as ImageIcon } from 'lucide-react';
-import { attachmentsService } from '@/services/attachments.service';
+import { Camera, Paperclip, Trash2, UploadCloud, FileText, Image as ImageIcon } from 'lucide-react';
+import { attachmentsService, type AttachmentTarget } from '@/services/attachments.service';
+import { useAuthStore } from '@/lib/auth-store';
+import { prepareImage, validateFile, MAX_FILE_MB } from '@/lib/image';
+import { isNetworkError, queueFiles } from '@/lib/offline/outbox';
 import { formatDate } from '@/lib/format';
 import { ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
 interface AttachmentsSectionProps {
-  target: { projectId?: string; depositId?: string; expenseId?: string };
+  target: AttachmentTarget;
   kindOptions?: { value: string; label: string }[];
   readOnly?: boolean;
 }
@@ -42,12 +45,11 @@ const DEFAULT_KINDS = [
 /** N'ouvre que des liens http(s) (jamais javascript:, data:...). */
 const safeHref = (url: string) => (/^https?:\/\//i.test(url) ? url : undefined);
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-const MAX_FILE_SIZE_MB = 15;
-
 export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOnly }: AttachmentsSectionProps) {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.user?.id);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const cameraInputRef = React.useRef<HTMLInputElement>(null);
   const [kind, setKind] = React.useState(kindOptions[0]?.value ?? 'document');
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -60,10 +62,26 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => attachmentsService.uploadAndRegister(file, kind, target),
-    onSuccess: () => {
+    mutationFn: async (file: File) => {
+      const prepared = await prepareImage(file);
+      // L'instant de la prise de vue est celui fourni par l'appareil (photo horodatee).
+      const capturedAt = new Date(file.lastModified || Date.now()).toISOString();
+      try {
+        await attachmentsService.uploadAndRegister(prepared, prepared.name, kind, target, capturedAt);
+        return 'sent' as const;
+      } catch (error) {
+        // Hors ligne : la photo est gardee sur l'appareil et partira au retour du reseau.
+        if (isNetworkError(error) && userId && target.projectId) {
+          await queueFiles({ userId, projectId: target.projectId, label: `Pièce jointe : ${prepared.name}`, target, files: [{ blob: prepared, name: prepared.name, kind, capturedAt }] });
+          return 'queued' as const;
+        }
+        throw error;
+      }
+    },
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey });
-      toast.success('Pièce jointe ajoutée.');
+      if (result === 'queued') toast.info('Hors ligne : la pièce jointe sera envoyée au retour du réseau.');
+      else toast.success('Pièce jointe ajoutée.');
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Le téléversement a échoué.'),
   });
@@ -82,12 +100,9 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
   });
 
   const submitFile = (file: File) => {
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      toast.error('Formats acceptés : JPG, PNG ou PDF.');
-      return;
-    }
-    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      toast.error(`Le fichier dépasse la taille maximale autorisée (${MAX_FILE_SIZE_MB} Mo).`);
+    const problem = validateFile(file);
+    if (problem) {
+      toast.error(problem);
       return;
     }
     uploadMutation.mutate(file);
@@ -169,7 +184,7 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
             </p>
             <p className="text-xs text-ink-400">
               Catégorie : <span className="font-medium text-ink-500">{kindOptions.find((k) => k.value === kind)?.label}</span> · JPG, PNG ou
-              PDF · 15 Mo max
+              PDF · {MAX_FILE_MB} Mo max
             </p>
             <input
               ref={fileInputRef}
@@ -178,7 +193,16 @@ export function AttachmentsSection({ target, kindOptions = DEFAULT_KINDS, readOn
               className="hidden"
               onChange={handleFileChange}
             />
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
           </div>
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={uploadMutation.isPending}
+            className="flex w-full items-center justify-center gap-2 rounded-full border border-blueprint-200 bg-white px-4 py-2 text-sm font-medium text-blueprint-600 shadow-card transition-colors hover:bg-blueprint-50 disabled:opacity-60 sm:hidden"
+          >
+            <Camera className="h-4 w-4" /> Prendre une photo
+          </button>
         </div>
       )}
 

@@ -1,4 +1,4 @@
-// frontend/src/services/expenses.service.ts - v1.2
+//frontend/src/services/expenses.service.ts
 // Fix : remove() envoyait { data: { reason } } alors que api.delete() attend
 // le body directement en 2e argument (voir api-client.ts : delete: (path, body, options)).
 // Le motif de suppression arrivait donc cote serveur comme { data: { reason } }
@@ -20,6 +20,12 @@ export interface CreateExpensePayload {
   invoiceReference?: string;
   paymentStatus?: ExpensePaymentStatus;
   amountPaidToSupplier?: number;
+  /** Rattachements analytiques et controle anti-fraude (position de l'appareil, identifiant de rejeu hors ligne). */
+  phaseId?: string;
+  supplierId?: string;
+  latitude?: number;
+  longitude?: number;
+  clientRef?: string;
 }
 
 export interface UpdateExpensePayload {

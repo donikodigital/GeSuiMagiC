@@ -9,6 +9,7 @@ import { monthBounds, parseIsoDate, startOfUtcDay, toIsoDate } from '../common/u
 import { computeStats, monthAttendance, summarizeByMonth, summarizeByPhase } from './attendance.calc';
 import { assertEditableDay, assertProjectOpenFor, findProjectOrThrow } from './attendance.helpers';
 import { UpsertWorkDayDto } from './dto/upsert-work-day.dto';
+import { assessLocation } from '../common/utils/geo.util';
 
 type WorkDayWithPhase = Prisma.WorkDayGetPayload<{ include: { phase: { select: { name: true } } } }>;
 
@@ -20,6 +21,8 @@ function toDto(row: WorkDayWithPhase) {
     workersCount: row.workersCount,
     phaseId: row.phaseId,
     phaseName: row.phase?.name ?? null,
+    stopReason: row.stopReason,
+    isOffSite: row.isOffSite,
     note: row.note,
     recordedById: row.recordedById,
     updatedAt: row.updatedAt,
@@ -67,6 +70,11 @@ export class WorkDaysService {
 
     const project = await findProjectOrThrow(this.prisma, projectId);
     assertProjectOpenFor(actor, project.status);
+    const site = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { siteLatitude: true, siteLongitude: true, geoFenceMeters: true },
+    });
+    const location = site ? assessLocation(site, dto.latitude, dto.longitude) : assessLocation({ siteLatitude: null, siteLongitude: null, geoFenceMeters: 500 });
 
     let workersCount = 0;
     let phaseId: string | null = null;
@@ -84,7 +92,17 @@ export class WorkDaysService {
       }
 
       const existing = await tx.workDay.findUnique({ where: { projectId_date: { projectId, date } } });
-      const data = { isWorked: dto.isWorked, workersCount, phaseId, note: dto.note?.trim() || null };
+      const data = {
+        isWorked: dto.isWorked,
+        workersCount,
+        phaseId,
+        // La raison d'arret n'a de sens que pour un jour non travaille.
+        stopReason: dto.isWorked ? null : (dto.stopReason ?? null),
+        latitude: location.latitude,
+        longitude: location.longitude,
+        isOffSite: location.isOffSite,
+        note: dto.note?.trim() || null,
+      };
 
       const saved = await tx.workDay.upsert({
         where: { projectId_date: { projectId, date } },

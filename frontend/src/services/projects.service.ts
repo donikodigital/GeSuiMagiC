@@ -2,6 +2,8 @@
 import { api } from '@/lib/api-client';
 import type { FinancialSummary, PaginatedResponse, Project, ProjectStatus } from '@/types/models';
 
+export type SupervisorPosition = 'SUPERVISOR' | 'SITE_MANAGER' | 'ARCHITECT';
+
 export interface CreateProjectPayload {
   name: string;
   description?: string;
@@ -31,7 +33,7 @@ export interface CreateProjectPayload {
  */
 export type UpdateProjectPayload = Partial<
   Omit<CreateProjectPayload, 'budget' | 'currency' | 'estimatedCost' | 'autoApproveExpenses' | 'expenseApprovalThreshold' | 'clientId'>
-> & { progressPercent?: number };
+> & { progressPercent?: number; siteLatitude?: number; siteLongitude?: number; geoFenceMeters?: number };
 
 export interface ProjectFilters {
   page?: number;
@@ -62,14 +64,20 @@ export const projectsService = {
 
   update: (id: string, payload: UpdateProjectPayload) => api.patch<Project>(`/projects/${id}`, payload),
 
-  updateFinancials: (id: string, payload: { budget?: number; currency?: string; autoApproveExpenses?: boolean; expenseApprovalThreshold?: number }) =>
+  updateFinancials: (
+    id: string,
+    payload: { budget?: number; currency?: string; autoApproveExpenses?: boolean; expenseApprovalThreshold?: number; receiptRequiredAbove?: number | null; technicalReviewAbove?: number | null },
+  ) =>
     api.patch<Project>(`/projects/${id}/financials`, payload),
 
   updateStatus: (id: string, status: ProjectStatus) => api.patch<Project>(`/projects/${id}/status`, { status }),
 
   listSupervisors: (id: string) => api.get(`/projects/${id}/supervisors`),
 
-  assignSupervisor: (id: string, supervisorId: string) => api.post(`/projects/${id}/supervisors`, { supervisorId }),
+  /** `position` : fonction sur le chantier (superviseur de saisie par defaut, conducteur de travaux ou architecte). */
+  assignSupervisor: (id: string, supervisorId: string, position?: SupervisorPosition) => api.post(`/projects/${id}/supervisors`, { supervisorId, position }),
+
+  updateSupervisorPosition: (id: string, supervisorId: string, position: SupervisorPosition) => api.patch(`/projects/${id}/supervisors/${supervisorId}`, { position }),
 
   /** `pendingDeposits` : depots encore en attente de ce superviseur, a traiter par le client. */
   revokeSupervisor: (id: string, supervisorId: string) =>

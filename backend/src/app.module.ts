@@ -34,6 +34,19 @@ import { ReportsModule } from './reports/reports.module';
 import { MessagesModule } from './messages/messages.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { MealsModule } from './meals/meals.module';
+import { SiteCommonModule } from './site-common/site-common.module';
+import { ProgressModule } from './progress/progress.module';
+import { ChangeOrdersModule } from './change-orders/change-orders.module';
+import { SiteLogsModule } from './site-logs/site-logs.module';
+import { QualityModule } from './quality/quality.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { QuotesModule } from './quotes/quotes.module';
+import { ContractsModule } from './contracts/contracts.module';
+import { PurchasingModule } from './purchasing/purchasing.module';
+import { WorkforceModule } from './workforce/workforce.module';
+import { DocumentsModule } from './documents/documents.module';
+import { MonthlyReportModule } from './monthly-report/monthly-report.module';
+import { CronModule } from './cron/cron.module';
 
 @Module({
   imports: [
@@ -69,6 +82,19 @@ import { MealsModule } from './meals/meals.module';
     MessagesModule,
     AttendanceModule,
     MealsModule,
+    SiteCommonModule,
+    ProgressModule,
+    ChangeOrdersModule,
+    SiteLogsModule,
+    QualityModule,
+    SuppliersModule,
+    QuotesModule,
+    ContractsModule,
+    PurchasingModule,
+    WorkforceModule,
+    DocumentsModule,
+    MonthlyReportModule,
+    CronModule,
   ],
   providers: [
     // Ordre d'execution : Throttler -> JwtAuth (peuple request.user) -> Roles (RBAC sur request.user.role)

@@ -25,7 +25,12 @@ describe('PhasesService', () => {
         createMany: jest.fn(),
       },
       workDay: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+      projectSupervisor: { findFirst: jest.fn().mockResolvedValue({ position: 'SUPERVISOR' }) },
     };
+    // Autres donnees rattachees a une etape (depenses, journal, stock...) : aucune par defaut.
+    for (const model of ['expense', 'siteLog', 'snag', 'reception', 'changeOrder', 'quoteLot', 'contract', 'purchaseOrder', 'stockMovement', 'workerPresence', 'phaseProgressUpdate']) {
+      prisma[model] = { count: jest.fn().mockResolvedValue(0) };
+    }
     prisma.runInTransaction = jest.fn().mockImplementation((fn: any) => fn(prisma));
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     service = new PhasesService(prisma, audit as any);
@@ -117,6 +122,48 @@ describe('PhasesService', () => {
     const rows = prisma.projectPhase.createMany.mock.calls[0][0].data;
     expect(rows.map((r: any) => r.name)).toEqual([...DEFAULT_PHASE_NAMES]);
     expect(rows.map((r: any) => r.position)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  describe('budget et planning par etape', () => {
+    const supervisor = { userId: 'u-s', email: 's@x', role: 'SUPERVISOR' as const, supervisorProfileId: 's-1' };
+
+    it("le client fixe le budget d'une etape (arrondi) avec trace d'audit", async () => {
+      prisma.projectPhase.findFirst.mockResolvedValueOnce(phase());
+
+      await service.update(PROJECT, 'ph-1', { budgetAmount: 1_500_000.456 }, actor);
+
+      expect(prisma.projectPhase.update.mock.calls[0][0].data.budgetAmount.toString()).toBe('1500000.46');
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'UPDATE', entityType: 'ProjectPhase' }), prisma);
+    });
+
+    it("le superviseur de saisie ne peut pas fixer le budget d'une etape", async () => {
+      await expect(service.update(PROJECT, 'ph-1', { budgetAmount: 10 }, supervisor)).rejects.toMatchObject({ code: 'ROLE_NOT_ALLOWED' });
+      expect(prisma.projectPhase.update).not.toHaveBeenCalled();
+    });
+
+    it('le conducteur de travaux modifie le planning mais pas le budget', async () => {
+      prisma.projectSupervisor.findFirst.mockResolvedValue({ position: 'SITE_MANAGER' });
+      prisma.projectPhase.findFirst.mockResolvedValueOnce(phase());
+
+      await service.update(PROJECT, 'ph-1', { plannedStart: '2026-11-01', plannedEnd: '2026-11-30' }, supervisor);
+      expect(prisma.projectPhase.update.mock.calls[0][0].data.plannedEnd).toEqual(new Date('2026-11-30T00:00:00Z'));
+
+      await expect(service.update(PROJECT, 'ph-1', { budgetAmount: 10 }, supervisor)).rejects.toMatchObject({ code: 'ROLE_NOT_ALLOWED' });
+    });
+
+    it('refuse un planning dont le debut suit la fin', async () => {
+      prisma.projectPhase.findFirst.mockResolvedValueOnce(phase());
+
+      await expect(service.update(PROJECT, 'ph-1', { plannedStart: '2026-12-01', plannedEnd: '2026-11-01' }, actor)).rejects.toMatchObject({ code: 'INVALID_PLANNING' });
+    });
+
+    it('efface le budget avec null', async () => {
+      prisma.projectPhase.findFirst.mockResolvedValueOnce(phase({ budgetAmount: 500 }));
+
+      await service.update(PROJECT, 'ph-1', { budgetAmount: null }, actor);
+
+      expect(prisma.projectPhase.update.mock.calls[0][0].data.budgetAmount).toBeNull();
+    });
   });
 
   it('projet inexistant : 404', async () => {

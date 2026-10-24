@@ -17,4 +17,9 @@ export class UpdateProjectDto {
   @IsOptional() @IsDateString() endDate?: string;
   @IsOptional() @IsInt() @Min(0) @Max(36_500) estimatedDurationDays?: number;
   @IsOptional() @IsInt() @Min(0) @Max(100) progressPercent?: number;
+
+  // Coordonnees du chantier (controle de geolocalisation) : latitude et longitude vont toujours ensemble.
+  @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 6 }) @Min(-90) @Max(90) siteLatitude?: number;
+  @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 6 }) @Min(-180) @Max(180) siteLongitude?: number;
+  @IsOptional() @IsInt() @Min(20) @Max(5000) geoFenceMeters?: number;
 }

@@ -5,7 +5,9 @@ import * as React from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { UserMinus, UserPlus } from 'lucide-react';
-import { useProject, useAssignSupervisor, useRevokeSupervisor } from '@/hooks/use-projects';
+import { useProject, useAssignSupervisor, useRevokeSupervisor, useUpdateSupervisorPosition } from '@/hooks/use-projects';
+import type { SupervisorPosition } from '@/services/projects.service';
+import { siteRoleLabels } from '@/lib/site-format';
 import { useAuth } from '@/hooks/use-auth';
 import { supervisorsService } from '@/services/supervisors.service';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,12 +16,20 @@ import { Select } from '@/components/ui/input';
 import { PageSpinner, ErrorState, EmptyState } from '@/components/ui/misc';
 import { initials } from '@/lib/format';
 
+const POSITIONS: SupervisorPosition[] = ['SUPERVISOR', 'SITE_MANAGER', 'ARCHITECT'];
+const POSITION_HINT: Record<SupervisorPosition, string> = {
+  SUPERVISOR: 'Saisit les dépenses, les présences et la paie.',
+  SITE_MANAGER: 'Dirige les travaux : validation technique, planning, situations de travaux.',
+  ARCHITECT: "Suit la qualité : avancement, réserves, réception, avis technique.",
+};
+
 export default function ProjectSupervisorsPage() {
   const params = useParams<{ id: string }>();
   const { isClient } = useAuth();
   const { data: project, isLoading, isError } = useProject(params.id);
   const assignMutation = useAssignSupervisor(params.id);
   const revokeMutation = useRevokeSupervisor(params.id);
+  const positionMutation = useUpdateSupervisorPosition(params.id);
 
   const allSupervisorsQuery = useQuery({
     queryKey: ['supervisors', 'select-list'],
@@ -28,6 +38,7 @@ export default function ProjectSupervisorsPage() {
   });
 
   const [selected, setSelected] = React.useState('');
+  const [position, setPosition] = React.useState<SupervisorPosition>('SUPERVISOR');
 
   if (isLoading) return <PageSpinner />;
   if (isError || !project) return <ErrorState message="Impossible de charger les superviseurs." />;
@@ -51,11 +62,21 @@ export default function ProjectSupervisorsPage() {
                 ))}
               </Select>
             </div>
+            <div className="sm:w-56">
+              <label className="mb-1.5 block text-sm font-medium text-ink-700">Fonction sur le chantier</label>
+              <Select value={position} onChange={(e) => setPosition(e.target.value as SupervisorPosition)}>
+                {POSITIONS.map((p) => (
+                  <option key={p} value={p}>
+                    {siteRoleLabels[p]}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <Button
               disabled={!selected}
               loading={assignMutation.isPending}
               onClick={() => {
-                assignMutation.mutate(selected, { onSuccess: () => setSelected('') });
+                assignMutation.mutate({ supervisorId: selected, position }, { onSuccess: () => { setSelected(''); setPosition('SUPERVISOR'); } });
               }}
             >
               <UserPlus className="h-4 w-4" /> Affecter
@@ -68,18 +89,36 @@ export default function ProjectSupervisorsPage() {
         <EmptyState title="Aucun superviseur affecté" description="Affectez un superviseur pour qu'il puisse enregistrer des dépenses sur ce chantier." />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {project.supervisors!.map(({ supervisor }) => (
+          {project.supervisors!.map(({ supervisor, position: current }) => (
             <Card key={supervisor.id}>
-              <CardContent className="flex items-center justify-between">
+              <CardContent className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blueprint-100 text-sm font-semibold text-blueprint-700">
                     {initials(supervisor.firstName, supervisor.lastName)}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium text-ink-900">
                       {supervisor.firstName} {supervisor.lastName}
                     </p>
                     <p className="text-xs text-ink-400">{supervisor.phone || '-'}</p>
+                    {isClient ? (
+                      <Select
+                        value={current ?? 'SUPERVISOR'}
+                        onChange={(e) => positionMutation.mutate({ supervisorId: supervisor.id, position: e.target.value as SupervisorPosition })}
+                        disabled={positionMutation.isPending}
+                        className="mt-1.5 h-8 w-full text-xs"
+                        aria-label="Fonction sur le chantier"
+                      >
+                        {POSITIONS.map((p) => (
+                          <option key={p} value={p}>
+                            {siteRoleLabels[p]}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <p className="mt-0.5 text-xs font-medium text-blueprint-600">{siteRoleLabels[current ?? 'SUPERVISOR']}</p>
+                    )}
+                    <p className="mt-1 text-[11px] leading-snug text-ink-400">{POSITION_HINT[current ?? 'SUPERVISOR']}</p>
                   </div>
                 </div>
                 {isClient && (

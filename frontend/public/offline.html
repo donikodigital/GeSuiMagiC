@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0B1330" />
+  <title>Hors ligne – GeSuiMagiC</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0B1330; color: #fff; }
+    .card { max-width: 420px; text-align: center; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 20px; padding: 32px 24px; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    p { margin: 0 0 20px; color: rgba(255,255,255,.7); line-height: 1.5; font-size: .95rem; }
+    button { background: #C9A24A; color: #0B1330; border: 0; border-radius: 10px; padding: 12px 20px; font-weight: 600; font-size: .95rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Vous êtes hors ligne</h1>
+    <p>Cette page n&apos;a pas encore été ouverte sur cet appareil. Reconnectez-vous au réseau pour la charger. Vos saisies déjà enregistrées hors ligne seront envoyées automatiquement au retour du réseau.</p>
+    <button onclick="location.reload()">Réessayer</button>
+  </div>
+</body>
+</html>

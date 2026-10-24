@@ -106,6 +106,22 @@ enum NotificationType {
   BROADCAST_RECEIVED
   MEAL_ACCOUNT_REQUESTED
   MEAL_ACCOUNT_ANSWERED
+  CHANGE_ORDER_REQUESTED
+  CHANGE_ORDER_DECIDED
+  SNAG_REPORTED
+  SNAG_UPDATED
+  PROGRESS_SUBMITTED
+  PROGRESS_DECIDED
+  TECH_REVIEW_REQUESTED
+  DOCUMENT_EXPIRING
+  MONTHLY_REPORT
+  ATTENDANCE_REMINDER
+  DELIVERY_RECEIVED
+  STATEMENT_SUBMITTED
+  STATEMENT_DECIDED
+  LOCATION_ALERT
+  LOW_STOCK_ALERT
+  SCHEDULE_ALERT
 }
 
 enum AuditAction {
@@ -166,6 +182,12 @@ model User {
   refreshTokenHash       String?
 
   lastLoginAt            DateTime?
+
+  // Canaux de notification complementaires (WhatsApp / SMS) : numero au format international (+224...)
+  messagingPhone         String?
+  whatsappOptIn          Boolean    @default(false)
+  smsOptIn               Boolean    @default(false)
+
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
 
@@ -215,6 +237,7 @@ model ClientProfile {
   supervisors    SupervisorProfile[]
   deposits       Deposit[]
   anomalies      Anomaly[]
+  suppliers      Supplier[]
 
   // Entrees de catalogue privees de ce client
   categories     ExpenseCategory[] @relation("CategoryOwner")
@@ -288,8 +311,18 @@ model Project {
   autoApproveExpenses       Boolean       @default(true)
   expenseApprovalThreshold  Decimal       @default(5000000) @db.Decimal(18, 2)
 
-  // Progression globale (0-100), mise a jour manuelle ou via etapes (v2)
+  // Progression globale (0-100) : moyenne ponderee des avancements VALIDES des etapes (voir ProgressService)
   progressPercent           Int           @default(0)
+
+  // Controles anti-fraude (tous facultatifs)
+  //  - coordonnees du chantier + rayon : une saisie geolocalisee hors du rayon est signalee ;
+  //  - justificatif obligatoire au-dessus d'un montant : la depense ne peut etre validee sans piece jointe ;
+  //  - validation technique (conducteur de travaux / architecte) obligatoire au-dessus d'un montant.
+  siteLatitude              Decimal?      @db.Decimal(9, 6)
+  siteLongitude             Decimal?      @db.Decimal(9, 6)
+  geoFenceMeters            Int           @default(500)
+  receiptRequiredAbove      Decimal?      @db.Decimal(18, 2)
+  technicalReviewAbove      Decimal?      @db.Decimal(18, 2)
 
   createdAt                 DateTime      @default(now())
   updatedAt                 DateTime      @updatedAt
@@ -311,6 +344,24 @@ model Project {
   mealCarryOvers            MealCarryOver[]
   mealAccountRequests       MealAccountRequest[]
 
+  // Gestion de chantier etendue
+  siteLogs                  SiteLog[]
+  progressUpdates           PhaseProgressUpdate[]
+  snags                     Snag[]
+  receptions                Reception[]
+  changeOrders              ChangeOrder[]
+  quoteLots                 QuoteLot[]
+  contracts                 Contract[]
+  purchaseOrders            PurchaseOrder[]
+  deliveries                Delivery[]
+  stockItems                StockItem[]
+  stockMovements            StockMovement[]
+  documents                 ProjectDocument[]
+  workers                   Worker[]
+  workerPresences           WorkerPresence[]
+  workerAdvances            WorkerAdvance[]
+  payRuns                   PayRun[]
+
   @@index([clientId])
   @@index([status])
   @@map("projects")
@@ -324,6 +375,8 @@ model ProjectSupervisor {
   supervisor    SupervisorProfile        @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
 
   status        ProjectSupervisorStatus  @default(ACTIVE)
+  // SUPERVISOR : saisit et paie ; SITE_MANAGER / ARCHITECT : validation technique (avancement, reserves, depenses importantes)
+  position      SupervisorPosition       @default(SUPERVISOR)
   assignedAt    DateTime                 @default(now())
   revokedAt     DateTime?
 
@@ -379,6 +432,13 @@ model Deposit {
   paymentMethod   PaymentMethod  @default(BANK_TRANSFER)
   reference       String?
   observation     String?
+
+  // Envoi depuis l'etranger : montant d'origine (ex: 1 000 EUR), taux effectif obtenu (1 EUR = X devise du projet)
+  // et frais de transfert (exprimes dans la devise d'origine). `amount` reste le montant CREDITE en devise du projet.
+  originalAmount  Decimal?       @db.Decimal(18, 2)
+  originalCurrency String?
+  exchangeRate    Decimal?       @db.Decimal(18, 6)
+  transferFees    Decimal?       @db.Decimal(18, 2)
 
   status          DepositStatus  @default(PENDING)
   rejectionReason String?
@@ -506,6 +566,28 @@ model Expense {
   supplier            String?
   invoiceReference    String?
 
+  // Rattachement analytique : etape du chantier, fournisseur/sous-traitant de l'annuaire, marche de sous-traitance
+  phaseId             String?
+  phase               ProjectPhase?         @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  supplierId          String?
+  supplierRef         Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  contractId          String?
+  contract            Contract?             @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  contractPayment     ContractPayment?
+
+  // Controles anti-fraude : position GPS de la saisie, validation technique prealable
+  latitude            Decimal?              @db.Decimal(9, 6)
+  longitude           Decimal?              @db.Decimal(9, 6)
+  isOffSite           Boolean               @default(false)
+  distanceMeters      Int?
+  techReviewStatus    TechReviewStatus      @default(NOT_REQUIRED)
+  techReviewedById    String?
+  techReviewedAt      DateTime?
+  techReviewNote      String?
+
+  // Identifiant genere par l'appareil (saisie hors ligne) : un rejeu ne cree jamais deux fois la meme depense.
+  clientRef           String?
+
   status              ExpenseStatus         @default(DRAFT)
   rejectionReason     String?
 
@@ -527,6 +609,7 @@ model Expense {
   archivedAt          DateTime?
 
   attachments         Attachment[]
+  payRun              PayRun?
 
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
@@ -534,6 +617,10 @@ model Expense {
   @@index([projectId, status])
   @@index([supervisorId])
   @@index([categoryId])
+  @@index([phaseId])
+  @@index([supplierId])
+  @@index([contractId])
+  @@unique([projectId, clientRef])
   @@map("expenses")
 }
 
@@ -577,6 +664,14 @@ model Attachment {
 
   kind         String    @default("document") // photo | facture | recu | bon_livraison | document
 
+  // Rattachement generique aux autres objets du chantier (journal, reserve, livraison, document...).
+  // projectId est alors toujours renseigne : c'est lui qui porte le controle d'acces.
+  entityType   String?
+  entityId     String?
+
+  // Instant de la prise de vue (horodatage de l'appareil) : differe de createdAt quand la photo est envoyee apres un passage hors ligne.
+  capturedAt   DateTime?
+
   uploadedById String
   uploadedBy   User      @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
 
@@ -585,6 +680,7 @@ model Attachment {
   @@index([projectId])
   @@index([depositId])
   @@index([expenseId])
+  @@index([entityType, entityId])
   @@map("attachments")
 }
 
@@ -774,10 +870,27 @@ model ProjectPhase {
   position  Int       @default(0)
   isActive  Boolean   @default(true)
 
+  // Budget prevu pour cette etape, planning prevu, avancement valide (0-100)
+  budgetAmount    Decimal?  @db.Decimal(18, 2)
+  plannedStart    DateTime? @db.Date
+  plannedEnd      DateTime? @db.Date
+  progressPercent Int       @default(0)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   workDays  WorkDay[]
+  expenses  Expense[]
+  siteLogs  SiteLog[]
+  progressUpdates PhaseProgressUpdate[]
+  snags     Snag[]
+  receptions Reception[]
+  changeOrders ChangeOrder[]
+  quoteLots QuoteLot[]
+  contracts Contract[]
+  purchaseOrders PurchaseOrder[]
+  stockMovements StockMovement[]
+  workerPresences WorkerPresence[]
 
   @@unique([projectId, name])
   @@index([projectId, position])
@@ -798,6 +911,14 @@ model WorkDay {
   // NoAction (et non Restrict) : la suppression d'un projet supprime etapes ET jours dans la meme instruction.
   phase        ProjectPhase? @relation(fields: [phaseId], references: [id], onDelete: NoAction)
   note         String?
+
+  // Raison de l'arret quand le jour n'est pas travaille (pluie, rupture de materiaux...)
+  stopReason   WorkStopReason?
+
+  // Geolocalisation de la saisie (controle anti-fraude)
+  latitude     Decimal?      @db.Decimal(9, 6)
+  longitude    Decimal?      @db.Decimal(9, 6)
+  isOffSite    Boolean       @default(false)
 
   recordedById String
   createdAt    DateTime      @default(now())
@@ -871,4 +992,794 @@ model MealAccountRequest {
   @@index([projectId, month])
   @@index([projectId, status])
   @@map("meal_account_requests")
+}
+
+// ============================================================================
+// GESTION DE CHANTIER ETENDUE (v1.3)
+// Journal, avancement, qualite, avenants, fournisseurs, devis, marches de
+// sous-traitance, achats/stock, ouvriers nominatifs et paie, documents.
+// Tout paiement (sous-traitant, paie) passe par une DEPENSE : le solde du
+// projet reste la seule source de verite financiere.
+// ============================================================================
+
+enum SupervisorPosition {
+  SUPERVISOR
+  SITE_MANAGER
+  ARCHITECT
+}
+
+enum WorkStopReason {
+  RAIN
+  HOLIDAY
+  MATERIAL_SHORTAGE
+  EQUIPMENT_BREAKDOWN
+  PAYMENT_DELAY
+  SAFETY
+  OTHER
+}
+
+enum ReviewStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
+enum TechReviewStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WeatherCondition {
+  SUNNY
+  CLOUDY
+  RAIN
+  HEAVY_RAIN
+  WINDY
+}
+
+enum SnagSeverity {
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+enum SnagStatus {
+  OPEN
+  FIXED
+  CLOSED
+}
+
+enum ReceptionType {
+  PHASE
+  PROVISIONAL
+  FINAL
+}
+
+enum ChangeOrderStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum SupplierKind {
+  SUPPLIER
+  SUBCONTRACTOR
+}
+
+enum QuoteLotStatus {
+  OPEN
+  AWARDED
+  CLOSED
+}
+
+enum SupplierQuoteStatus {
+  SUBMITTED
+  SELECTED
+  REJECTED
+}
+
+enum ContractStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum StatementStatus {
+  SUBMITTED
+  VALIDATED
+  REJECTED
+}
+
+enum ContractPaymentType {
+  ADVANCE
+  STATEMENT
+  RETENTION_RELEASE
+  OTHER
+}
+
+enum PurchaseOrderStatus {
+  ORDERED
+  PARTIAL
+  DELIVERED
+  CANCELLED
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  LOSS
+}
+
+enum ProjectDocumentType {
+  PERMIT
+  PLAN
+  CONTRACT
+  INSURANCE
+  WARRANTY
+  TAX
+  OTHER
+}
+
+enum PayRunStatus {
+  DRAFT
+  SUBMITTED
+}
+
+// ----------------------------------------------------------------------------
+// JOURNAL DE CHANTIER ET AVANCEMENT
+// ----------------------------------------------------------------------------
+
+model SiteLog {
+  id          String           @id @default(uuid())
+  projectId   String
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  date        DateTime         @db.Date
+  title       String
+  content     String
+  weather     WeatherCondition?
+  phaseId     String?
+  phase       ProjectPhase?    @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+
+  latitude    Decimal?         @db.Decimal(9, 6)
+  longitude   Decimal?         @db.Decimal(9, 6)
+  isOffSite   Boolean          @default(false)
+
+  // Identifiant genere par l'appareil : un rejeu hors ligne ne cree jamais deux fois la meme entree.
+  clientRef   String?
+
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([projectId, clientRef])
+  @@index([projectId, date])
+  @@index([phaseId])
+  @@map("site_logs")
+}
+
+// Avancement declare par le superviseur pour une etape, puis valide (ou refuse) par le conducteur de travaux / architecte / client.
+model PhaseProgressUpdate {
+  id          String        @id @default(uuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phaseId     String
+  phase       ProjectPhase  @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  percent     Int
+  note        String?
+  status      ReviewStatus  @default(PENDING)
+
+  submittedById String
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  clientRef     String?
+  createdAt     DateTime    @default(now())
+
+  @@unique([projectId, clientRef])
+  @@index([phaseId, createdAt])
+  @@index([projectId, status])
+  @@map("phase_progress_updates")
+}
+
+// ----------------------------------------------------------------------------
+// QUALITE ET RECEPTION
+// ----------------------------------------------------------------------------
+
+// Reserve / non-conformite releve sur le chantier, puis levee.
+model Snag {
+  id          String        @id @default(uuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number      Int
+
+  phaseId     String?
+  phase       ProjectPhase? @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  title       String
+  description String?
+  location    String?
+  severity    SnagSeverity  @default(MINOR)
+  status      SnagStatus    @default(OPEN)
+  dueDate     DateTime?     @db.Date
+
+  raisedById  String
+  raisedAt    DateTime      @default(now())
+  fixedById   String?
+  fixedAt     DateTime?
+  fixNote     String?
+  closedById  String?
+  closedAt    DateTime?
+  closureNote String?
+  clientRef   String?
+
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([projectId, number])
+  @@unique([projectId, clientRef])
+  @@index([projectId, status])
+  @@map("snags")
+}
+
+// Proces-verbal de reception (par etape, provisoire ou definitive).
+model Reception {
+  id             String        @id @default(uuid())
+  projectId      String
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number         Int
+
+  type           ReceptionType
+  phaseId        String?
+  phase          ProjectPhase? @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  date           DateTime      @db.Date
+  notes          String?
+  attendees      String?
+  // Reserves ouvertes au moment de la creation du PV (reception "avec reserves")
+  reservesSnapshot Json?
+  openSnagsCount Int           @default(0)
+
+  signedAt       DateTime?
+  signedById     String?
+  signerName     String?
+
+  createdById    String
+  createdAt      DateTime      @default(now())
+
+  @@unique([projectId, number])
+  @@index([projectId, type])
+  @@map("receptions")
+}
+
+// ----------------------------------------------------------------------------
+// AVENANTS (travaux supplementaires / modifications validees par le client)
+// ----------------------------------------------------------------------------
+
+model ChangeOrder {
+  id             String            @id @default(uuid())
+  projectId      String
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number         Int
+
+  title          String
+  description    String
+  extraCost      Decimal           @default(0) @db.Decimal(18, 2)
+  extraDays      Int               @default(0)
+  phaseId        String?
+  phase          ProjectPhase?     @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+
+  status         ChangeOrderStatus @default(PENDING)
+  requestedById  String
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  // Vrai tant que le surcout est ajoute au budget du projet (et de l'etape).
+  appliedToBudget Boolean          @default(false)
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+  @@map("change_orders")
+}
+
+// ----------------------------------------------------------------------------
+// FOURNISSEURS, SOUS-TRAITANTS, DEVIS, MARCHES
+// ----------------------------------------------------------------------------
+
+model Supplier {
+  id            String        @id @default(uuid())
+  ownerClientId String
+  ownerClient   ClientProfile @relation(fields: [ownerClientId], references: [id], onDelete: Cascade)
+
+  name          String
+  kind          SupplierKind  @default(SUPPLIER)
+  trade         String?
+  phone         String?
+  email         String?
+  address       String?
+  taxId         String?
+  notes         String?
+  isActive      Boolean       @default(true)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  expenses      Expense[]
+  quotes        SupplierQuote[]
+  contracts     Contract[]
+  purchaseOrders PurchaseOrder[]
+  deliveries    Delivery[]
+
+  @@unique([ownerClientId, name])
+  @@index([ownerClientId, kind])
+  @@map("suppliers")
+}
+
+// Lot a chiffrer (appel d'offres) avec son metre : les devis des fournisseurs se comparent ligne a ligne.
+model QuoteLot {
+  id              String         @id @default(uuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number          Int
+
+  phaseId         String?
+  phase           ProjectPhase?  @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  title           String
+  description     String?
+  status          QuoteLotStatus @default(OPEN)
+  awardedQuoteId  String?
+  estimatedAmount Decimal?       @db.Decimal(18, 2)
+
+  createdById     String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items           QuoteLotItem[]
+  quotes          SupplierQuote[]
+
+  @@unique([projectId, number])
+  @@map("quote_lots")
+}
+
+model QuoteLotItem {
+  id                 String      @id @default(uuid())
+  lotId              String
+  lot                QuoteLot    @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  position           Int         @default(0)
+
+  label              String
+  unit               String
+  quantity           Decimal     @db.Decimal(14, 3)
+  estimatedUnitPrice Decimal?    @db.Decimal(18, 2)
+
+  quoteLines         SupplierQuoteLine[]
+
+  @@index([lotId, position])
+  @@map("quote_lot_items")
+}
+
+model SupplierQuote {
+  id          String              @id @default(uuid())
+  lotId       String
+  lot         QuoteLot            @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  supplierId  String
+  supplier    Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  reference   String?
+  validUntil  DateTime?           @db.Date
+  notes       String?
+  totalAmount Decimal             @db.Decimal(18, 2)
+  status      SupplierQuoteStatus @default(SUBMITTED)
+
+  createdById String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  lines       SupplierQuoteLine[]
+
+  @@unique([lotId, supplierId])
+  @@map("supplier_quotes")
+}
+
+model SupplierQuoteLine {
+  id         String        @id @default(uuid())
+  quoteId    String
+  quote      SupplierQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  itemId     String?
+  item       QuoteLotItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  label      String
+  unit       String
+  quantity   Decimal       @db.Decimal(14, 3)
+  unitPrice  Decimal       @db.Decimal(18, 2)
+  total      Decimal       @db.Decimal(18, 2)
+
+  @@index([quoteId])
+  @@map("supplier_quote_lines")
+}
+
+// Marche de sous-traitance : montant convenu, retenue de garantie, situations de travaux, acomptes.
+model Contract {
+  id               String         @id @default(uuid())
+  projectId        String
+  project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number           Int
+
+  supplierId       String
+  supplier         Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  phaseId          String?
+  phase            ProjectPhase?  @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  quoteId          String?
+
+  title            String
+  description      String?
+  amount           Decimal        @db.Decimal(18, 2)
+  retentionPercent Decimal        @default(5) @db.Decimal(5, 2)
+  signedAt         DateTime?      @db.Date
+  status           ContractStatus @default(ACTIVE)
+
+  createdById      String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  statements       ProgressStatement[]
+  payments         ContractPayment[]
+  expenses         Expense[]
+
+  @@unique([projectId, number])
+  @@index([supplierId])
+  @@map("contracts")
+}
+
+// Situation de travaux : cumul des travaux realises a une date, valide par le client / conducteur de travaux.
+model ProgressStatement {
+  id               String          @id @default(uuid())
+  contractId       String
+  contract         Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  projectId        String
+  number           Int
+
+  periodEnd        DateTime        @db.Date
+  cumulativeAmount Decimal         @db.Decimal(18, 2)
+  amountThisPeriod Decimal         @db.Decimal(18, 2)
+  retentionAmount  Decimal         @db.Decimal(18, 2)
+  advanceRecovered Decimal         @default(0) @db.Decimal(18, 2)
+  netPayable       Decimal         @db.Decimal(18, 2)
+
+  status           StatementStatus @default(SUBMITTED)
+  note             String?
+  submittedById    String
+  decidedById      String?
+  decidedAt        DateTime?
+  decisionNote     String?
+  createdAt        DateTime        @default(now())
+
+  payments         ContractPayment[]
+
+  @@unique([contractId, number])
+  @@index([projectId, status])
+  @@map("progress_statements")
+}
+
+model ContractPayment {
+  id           String              @id @default(uuid())
+  contractId   String
+  contract     Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  projectId    String
+  statementId  String?
+  statement    ProgressStatement?  @relation(fields: [statementId], references: [id], onDelete: SetNull)
+
+  type         ContractPaymentType
+  amount       Decimal             @db.Decimal(18, 2)
+  date         DateTime            @db.Date
+  reference    String?
+  note         String?
+  // La DEPENSE creee pour ce paiement : c'est elle qui diminue le solde du projet.
+  expenseId    String?             @unique
+  expense      Expense?            @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  recordedById String
+  createdAt    DateTime            @default(now())
+
+  @@index([contractId])
+  @@index([projectId])
+  @@map("contract_payments")
+}
+
+// ----------------------------------------------------------------------------
+// ACHATS, LIVRAISONS, STOCK
+// ----------------------------------------------------------------------------
+
+model PurchaseOrder {
+  id            String              @id @default(uuid())
+  projectId     String
+  project       Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number        Int
+
+  supplierId    String?
+  supplier      Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierName  String?
+  phaseId       String?
+  phase         ProjectPhase?       @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  reference     String?
+  orderDate     DateTime            @db.Date
+  expectedDate  DateTime?           @db.Date
+  status        PurchaseOrderStatus @default(ORDERED)
+  notes         String?
+
+  createdById   String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  lines         PurchaseOrderLine[]
+  deliveries    Delivery[]
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id              String        @id @default(uuid())
+  orderId         String
+  order           PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  position        Int           @default(0)
+
+  label           String
+  unit            String
+  quantityOrdered Decimal       @db.Decimal(14, 3)
+  unitPrice       Decimal?      @db.Decimal(18, 2)
+
+  deliveryLines   DeliveryLine[]
+
+  @@index([orderId, position])
+  @@map("purchase_order_lines")
+}
+
+// Bon de livraison : ce qui est REELLEMENT arrive sur le chantier (peut differer de la commande).
+model Delivery {
+  id            String         @id @default(uuid())
+  projectId     String
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  orderId       String?
+  order         PurchaseOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  supplierId    String?
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierName  String?
+  noteReference String?
+  date          DateTime       @db.Date
+  notes         String?
+
+  latitude      Decimal?       @db.Decimal(9, 6)
+  longitude     Decimal?       @db.Decimal(9, 6)
+  isOffSite     Boolean        @default(false)
+  clientRef     String?
+
+  receivedById  String
+  createdAt     DateTime       @default(now())
+
+  lines         DeliveryLine[]
+
+  @@unique([projectId, clientRef])
+  @@index([projectId, date])
+  @@map("deliveries")
+}
+
+model DeliveryLine {
+  id               String             @id @default(uuid())
+  deliveryId       String
+  delivery         Delivery           @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  orderLineId      String?
+  orderLine        PurchaseOrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
+  stockItemId      String
+  stockItem        StockItem          @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  label            String
+  unit             String
+  quantityReceived Decimal            @db.Decimal(14, 3)
+  quantityRefused  Decimal            @default(0) @db.Decimal(14, 3)
+  note             String?
+
+  movements        StockMovement[]
+
+  @@index([deliveryId])
+  @@map("delivery_lines")
+}
+
+model StockItem {
+  id          String    @id @default(uuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  materialId  String?
+
+  name        String
+  unit        String
+  // Seuil d'alerte : en dessous, l'article est signale "stock bas".
+  minQuantity Decimal?  @db.Decimal(14, 3)
+
+  createdAt   DateTime  @default(now())
+
+  movements     StockMovement[]
+  deliveryLines DeliveryLine[]
+
+  @@unique([projectId, name, unit])
+  @@map("stock_items")
+}
+
+model StockMovement {
+  id             String            @id @default(uuid())
+  projectId      String
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stockItemId    String
+  stockItem      StockItem         @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  type           StockMovementType
+  // Toujours positif ; le sens est donne par `type` (ADJUSTMENT peut etre negatif : quantite signee).
+  quantity       Decimal           @db.Decimal(14, 3)
+  phaseId        String?
+  phase          ProjectPhase?     @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+  deliveryLineId String?
+  deliveryLine   DeliveryLine?     @relation(fields: [deliveryLineId], references: [id], onDelete: SetNull)
+
+  date           DateTime          @db.Date
+  note           String?
+  clientRef      String?
+  createdById    String
+  createdAt      DateTime          @default(now())
+
+  @@unique([projectId, clientRef])
+  @@index([projectId, date])
+  @@index([stockItemId])
+  @@index([phaseId])
+  @@map("stock_movements")
+}
+
+// ----------------------------------------------------------------------------
+// DOCUMENTS REGLEMENTAIRES (permis, assurances, garanties...) avec date d'expiration
+// ----------------------------------------------------------------------------
+
+model ProjectDocument {
+  id            String              @id @default(uuid())
+  projectId     String
+  project       Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  type          ProjectDocumentType
+  title         String
+  reference     String?
+  issuedAt      DateTime?           @db.Date
+  expiresAt     DateTime?           @db.Date
+  notes         String?
+  // Plus petit seuil (en jours) pour lequel une alerte d'expiration a deja ete envoyee.
+  lastAlertDays Int?
+
+  createdById   String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([projectId, expiresAt])
+  @@map("project_documents")
+}
+
+// ----------------------------------------------------------------------------
+// OUVRIERS NOMINATIFS, AVANCES ET PAIE
+// ----------------------------------------------------------------------------
+
+model Worker {
+  id         String    @id @default(uuid())
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fullName   String
+  trade      String?
+  dailyRate  Decimal?  @db.Decimal(18, 2)
+  phone      String?
+  isActive   Boolean   @default(true)
+  startedAt  DateTime? @db.Date
+  leftAt     DateTime? @db.Date
+  notes      String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  presences  WorkerPresence[]
+  advances   WorkerAdvance[]
+  payLines   PayRunLine[]
+
+  @@unique([projectId, fullName])
+  @@index([projectId, isActive])
+  @@map("workers")
+}
+
+model WorkerPresence {
+  id           String        @id @default(uuid())
+  projectId    String
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerId     String
+  worker       Worker        @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  date         DateTime      @db.Date
+  // 1 = journee complete, 0.5 = demi-journee
+  fraction     Decimal       @default(1) @db.Decimal(3, 2)
+  phaseId      String?
+  phase        ProjectPhase? @relation(fields: [phaseId], references: [id], onDelete: NoAction)
+
+  recordedById String
+  createdAt    DateTime      @default(now())
+
+  @@unique([workerId, date])
+  @@index([projectId, date])
+  @@map("worker_presences")
+}
+
+// Avance en especes donnee a un ouvrier. Comptabilisee en depense lors de la paie qui la regularise (voir PayRun).
+model WorkerAdvance {
+  id           String   @id @default(uuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerId     String
+  worker       Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  amount       Decimal  @db.Decimal(18, 2)
+  date         DateTime @db.Date
+  note         String?
+
+  recordedById String
+  createdAt    DateTime @default(now())
+
+  @@index([projectId, workerId])
+  @@map("worker_advances")
+}
+
+// Paie d'une periode : UNE depense (cout brut) est creee a la validation de la paie.
+model PayRun {
+  id            String       @id @default(uuid())
+  projectId     String
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number        Int
+
+  label         String
+  periodStart   DateTime     @db.Date
+  periodEnd     DateTime     @db.Date
+  status        PayRunStatus @default(DRAFT)
+  categoryId    String?
+
+  totalGross    Decimal      @default(0) @db.Decimal(18, 2)
+  totalAdvance  Decimal      @default(0) @db.Decimal(18, 2)
+  totalNet      Decimal      @default(0) @db.Decimal(18, 2)
+
+  expenseId     String?      @unique
+  expense       Expense?     @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  submittedAt   DateTime?
+
+  createdById   String
+  createdAt     DateTime     @default(now())
+
+  lines         PayRunLine[]
+
+  @@unique([projectId, number])
+  @@map("pay_runs")
+}
+
+model PayRunLine {
+  id              String   @id @default(uuid())
+  payRunId        String
+  payRun          PayRun   @relation(fields: [payRunId], references: [id], onDelete: Cascade)
+  workerId        String
+  worker          Worker   @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  daysWorked      Decimal  @db.Decimal(6, 2)
+  dailyRate       Decimal  @db.Decimal(18, 2)
+  grossAmount     Decimal  @db.Decimal(18, 2)
+  advanceDeducted Decimal  @default(0) @db.Decimal(18, 2)
+  netAmount       Decimal  @db.Decimal(18, 2)
+  note            String?
+
+  @@unique([payRunId, workerId])
+  @@map("pay_run_lines")
 }

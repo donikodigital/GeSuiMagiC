@@ -1,11 +1,6 @@
-// frontend/src/app/(app)/projects/[id]/deposits/page.tsx - v2.1
-// Harmonisation de la modale de detail avec le style de
-// PendingDepositActionDialog (raccourci du tableau de bord superviseur) :
-// bouton "Valider le depot" en pleine largeur au-dessus, boutons
-// secondaires (Refuser / Voir le detail complet / Fermer) en grille en
-// dessous au lieu d'un flex-wrap justify-end. Le nombre de colonnes de la
-// grille secondaire s'adapte au nombre de boutons realement affiches (1 a
-// 3 selon le role). Aucun changement de logique/mutations.
+//frontend/src/app/(app)/projects/[id]/deposits/page.tsx
+// Liste des depots : filtre par statut, resume des envois de l'etranger (taux reel moyen, frais), modale de detail
+// harmonisee avec PendingDepositActionDialog (validation en pleine largeur, actions secondaires en grille).
 
 'use client';
 
@@ -16,6 +11,7 @@ import { Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useDeposits, useApproveDeposit, useRejectDeposit } from '@/hooks/use-deposits';
 import { useAuth } from '@/hooks/use-auth';
 import { DepositCard } from '@/components/deposits/deposit-card';
+import { CurrencySummaryCards } from '@/components/site/currency-summary';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -66,6 +62,8 @@ export default function ProjectDepositsPage() {
           </Link>
         )}
       </div>
+
+      <CurrencySummaryCards projectId={params.id} />
 
       {isError ? (
         <ErrorState message="Impossible de charger les dépôts." />

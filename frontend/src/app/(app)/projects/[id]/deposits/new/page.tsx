@@ -1,19 +1,23 @@
-// frontend/src/app/(app)/projects/[id]/deposits/new/page.tsx - v2.0
+//frontend/src/app/(app)/projects/[id]/deposits/new/page.tsx
+// Nouveau depot, y compris un envoi de l'etranger : montant envoye, devise, taux et frais de transfert (taux reel calcule).
+
 'use client';
 
+import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarRange, HandCoins } from 'lucide-react';
+import { CalendarRange, Globe2, HandCoins } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FormField, Input, Select, Textarea } from '@/components/ui/input';
 import { useCreateDeposit } from '@/hooks/use-deposits';
 import { projectsService } from '@/services/projects.service';
-import { paymentMethodLabels } from '@/lib/format';
+import { useProject } from '@/hooks/use-projects';
+import { formatMoney, paymentMethodLabels } from '@/lib/format';
 import { RequireRole } from '@/components/shared/require-role';
 
 const schema = z.object({
@@ -43,6 +47,15 @@ function NewDepositPageContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const createDeposit = useCreateDeposit(params.id);
+  const { data: project } = useProject(params.id);
+  const projectCurrency = project?.currency ?? 'GNF';
+
+  // Envoi de l'etranger : champs hors du schema principal, valides ici.
+  const [foreign, setForeign] = React.useState(false);
+  const [originalAmount, setOriginalAmount] = React.useState('');
+  const [originalCurrency, setOriginalCurrency] = React.useState('EUR');
+  const [exchangeRate, setExchangeRate] = React.useState('');
+  const [transferFees, setTransferFees] = React.useState('');
 
   const supervisorsQuery = useQuery({
     queryKey: ['projects', params.id, 'supervisors'],
@@ -53,10 +66,25 @@ function NewDepositPageContent() {
     register,
     handleSubmit,
     formState: { errors },
+    control,
   } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { paymentMethod: 'BANK_TRANSFER' } });
+  const amount = Number(useWatch({ control, name: 'amount' })) || 0;
+
+  const original = Number(originalAmount) || 0;
+  const rate = Number(exchangeRate) || 0;
+  const fees = Number(transferFees) || 0;
+  const expected = original * rate;
+  const gapPercent = expected > 0 ? ((amount - expected) / expected) * 100 : 0;
+  const effectiveRate = original + fees > 0 ? amount / (original + fees) : 0;
+  const currencyCode = originalCurrency.trim().toUpperCase();
+  const foreignValid = !foreign || (original > 0 && rate > 0 && /^[A-Z]{3}$/.test(currencyCode) && currencyCode !== projectCurrency);
 
   const onSubmit = async (values: FormValues) => {
-    await createDeposit.mutateAsync({ ...values, amount: Number(values.amount) });
+    await createDeposit.mutateAsync({
+      ...values,
+      amount: Number(values.amount),
+      ...(foreign ? { originalAmount: original, originalCurrency: currencyCode, exchangeRate: rate, transferFees: transferFees ? fees : undefined } : {}),
+    });
     router.push(`/projects/${params.id}/deposits`);
   };
 
@@ -104,6 +132,60 @@ function NewDepositPageContent() {
 
         <Card>
           <CardHeader className="items-start gap-3">
+            <SectionIcon icon={Globe2} />
+            <div>
+              <CardTitle>Envoi de l&apos;étranger</CardTitle>
+              <CardDescription>Si l&apos;argent a été envoyé dans une autre devise, gardez la trace du taux et des frais.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex items-center gap-2.5 text-sm text-ink-700">
+              <input type="checkbox" checked={foreign} onChange={(e) => setForeign(e.target.checked)} className="h-4 w-4 rounded border-concrete text-blueprint-600" />
+              Ce dépôt a été envoyé dans une autre devise que {projectCurrency}
+            </label>
+            {foreign && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Montant envoyé" htmlFor="originalAmount" required>
+                    <Input id="originalAmount" type="number" inputMode="decimal" min={0} step="0.01" value={originalAmount} onChange={(e) => setOriginalAmount(e.target.value)} />
+                  </FormField>
+                  <FormField label="Devise d'origine" htmlFor="originalCurrency" required hint="Code à 3 lettres (EUR, USD…)">
+                    <Input id="originalCurrency" value={originalCurrency} maxLength={3} className="uppercase" onChange={(e) => setOriginalCurrency(e.target.value.toUpperCase())} />
+                  </FormField>
+                  <FormField label={`Taux (1 ${currencyCode || '…'} = … ${projectCurrency})`} htmlFor="exchangeRate" required>
+                    <Input id="exchangeRate" type="number" inputMode="decimal" min={0} step="any" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} />
+                  </FormField>
+                  <FormField label={`Frais de transfert (${currencyCode || '…'})`} htmlFor="transferFees">
+                    <Input id="transferFees" type="number" inputMode="decimal" min={0} step="0.01" value={transferFees} onChange={(e) => setTransferFees(e.target.value)} />
+                  </FormField>
+                </div>
+                {currencyCode === projectCurrency && <p className="text-xs text-clay-600">La devise d&apos;origine est déjà celle du projet.</p>}
+                {original > 0 && rate > 0 && amount > 0 && (
+                  <div className="space-y-1.5 rounded-xl bg-blueprint-50/60 px-4 py-3 text-sm">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-ink-500">Montant attendu</span>
+                      <span className="font-ledger font-semibold text-ink-900">{formatMoney(expected, projectCurrency)}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-ink-500">Taux réel (frais compris)</span>
+                      <span className="font-ledger font-semibold text-ink-900">{effectiveRate.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-ink-500">Écart avec le montant crédité</span>
+                      <span className={`font-ledger font-semibold ${Math.abs(gapPercent) > 5 ? 'text-clay-600' : 'text-moss-600'}`}>
+                        {gapPercent > 0 ? '+' : ''}
+                        {gapPercent.toFixed(1)} %
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="items-start gap-3">
             <SectionIcon icon={CalendarRange} />
             <div>
               <CardTitle>Détails du versement</CardTitle>
@@ -145,7 +227,7 @@ function NewDepositPageContent() {
             <Button type="button" variant="outline" onClick={() => router.back()}>
               Annuler
             </Button>
-            <Button type="submit" loading={createDeposit.isPending}>
+            <Button type="submit" loading={createDeposit.isPending} disabled={!foreignValid}>
               Enregistrer le dépôt
             </Button>
           </div>

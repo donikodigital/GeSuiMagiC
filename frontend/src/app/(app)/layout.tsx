@@ -1,5 +1,5 @@
+//frontend/src/app/(app)/layout.tsx
 // ============================================================================
-// app/(app)/layout.tsx - v1.2
 // Fix deconnexion au refresh : le garde attendait `isAuthenticated` sans
 // attendre la rehydratation du store persist (Zustand), donc il redirigeait
 // vers /login pendant le court instant ou accessToken/user valaient encore
@@ -14,10 +14,14 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
 import { useAuth } from '@/hooks/use-auth';
 import { PageSpinner } from '@/components/ui/misc';
+import { OfflineBanner } from '@/components/offline/offline-banner';
+import { useOutboxSync } from '@/hooks/use-outbox';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, hasHydrated } = useAuth();
+  // Envoi des saisies faites hors ligne (au retour du reseau).
+  useOutboxSync();
 
   React.useEffect(() => {
     // Tant que le store n'a pas fini de relire le localStorage, on ne sait
@@ -39,6 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <Topbar />
+        <OfflineBanner />
         <main className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">{children}</main>
       </div>
     </div>

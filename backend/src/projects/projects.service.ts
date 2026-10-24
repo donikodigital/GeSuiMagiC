@@ -1,6 +1,6 @@
 //backend/src/projects/projects.service.ts
 import { Injectable } from '@nestjs/common';
-import { Prisma, ProjectStatus } from '@prisma/client';
+import { Prisma, ProjectStatus, SupervisorPosition } from '@prisma/client';
 import { PrismaService, TxClient } from '../prisma/prisma.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { AuditService } from '../audit/audit.service';
@@ -15,6 +15,7 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { UpdateProjectFinancialsDto } from './dto/update-project-financials.dto';
 import { ProjectQueryDto } from './dto/project-query.dto';
 import { createDefaultPhases } from '../attendance/attendance.constants';
+import { getPosition } from '../common/utils/technical-review.util';
 
 /** Verifie la coherence des dates d'un projet (fin >= debut). */
 function assertDateRange(start?: Date | null, end?: Date | null) {
@@ -127,7 +128,8 @@ export class ProjectsService {
     return { items, meta: buildPaginationMeta(page, limit, total) };
   }
 
-  async findOne(id: string) {
+  /** `siteRole` : fonction de l'utilisateur sur CE chantier (le front y adapte les actions proposees). */
+  async findOne(id: string, actor?: AuthenticatedUser) {
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
@@ -140,7 +142,10 @@ export class ProjectsService {
       },
     });
     if (!project) throw AppException.notFound('Projet');
-    return project;
+    let siteRole: 'SUPERADMIN' | 'CLIENT' | SupervisorPosition | null = null;
+    if (actor?.role === 'SUPERADMIN' || actor?.role === 'CLIENT') siteRole = actor.role;
+    else if (actor?.supervisorProfileId) siteRole = await getPosition(this.prisma, id, actor.supervisorProfileId);
+    return { ...project, siteRole };
   }
 
   async updateNonFinancial(id: string, dto: UpdateProjectDto, actor: AuthenticatedUser) {
@@ -151,6 +156,13 @@ export class ProjectsService {
       const startDate = dto.startDate ? new Date(dto.startDate) : undefined;
       const endDate = dto.endDate ? new Date(dto.endDate) : undefined;
       assertDateRange(startDate ?? existing.startDate, endDate ?? existing.endDate);
+
+      // Latitude et longitude du chantier vont ensemble : on ne garde jamais un point a moitie renseigne.
+      const lat = dto.siteLatitude ?? (existing.siteLatitude === null ? undefined : Number(existing.siteLatitude));
+      const lng = dto.siteLongitude ?? (existing.siteLongitude === null ? undefined : Number(existing.siteLongitude));
+      if ((lat === undefined) !== (lng === undefined)) {
+        throw AppException.badRequest('INVALID_COORDINATES', 'Indiquez la latitude et la longitude du chantier ensemble.');
+      }
 
       const updated = await tx.project.update({
         where: { id },
@@ -167,7 +179,7 @@ export class ProjectsService {
 
   async updateFinancials(id: string, dto: UpdateProjectFinancialsDto, actor: AuthenticatedUser) {
     if (actor.role === 'CLIENT') {
-      const allowedForClient: (keyof UpdateProjectFinancialsDto)[] = ['budget', 'autoApproveExpenses', 'expenseApprovalThreshold'];
+      const allowedForClient: (keyof UpdateProjectFinancialsDto)[] = ['budget', 'autoApproveExpenses', 'expenseApprovalThreshold', 'receiptRequiredAbove', 'technicalReviewAbove'];
       const attemptedForbidden = Object.keys(dto).some((k) => !allowedForClient.includes(k as keyof UpdateProjectFinancialsDto));
       if (attemptedForbidden) {
         throw AppException.badRequest('FORBIDDEN_FIELD', "Seul le superadmin peut modifier la devise ou le cout estimatif d'un projet.");
@@ -210,6 +222,8 @@ export class ProjectsService {
             currency: existing.currency,
             autoApproveExpenses: existing.autoApproveExpenses,
             expenseApprovalThreshold: existing.expenseApprovalThreshold,
+            receiptRequiredAbove: existing.receiptRequiredAbove,
+            technicalReviewAbove: existing.technicalReviewAbove,
           },
           newValue: dto,
           reason: 'Mise a jour des parametres financiers du projet',
@@ -240,7 +254,7 @@ export class ProjectsService {
     });
   }
 
-  async assignSupervisor(projectId: string, supervisorId: string, actor: AuthenticatedUser) {
+  async assignSupervisor(projectId: string, supervisorId: string, actor: AuthenticatedUser, position?: SupervisorPosition) {
     const supervisor = await this.prisma.supervisorProfile.findUnique({ where: { id: supervisorId } });
     if (!supervisor) throw AppException.notFound('Superviseur');
 
@@ -252,15 +266,38 @@ export class ProjectsService {
     return this.prisma.runInTransaction(async (tx) => {
       const assignment = await tx.projectSupervisor.upsert({
         where: { projectId_supervisorId: { projectId, supervisorId } },
-        update: { status: 'ACTIVE', revokedAt: null },
-        create: { projectId, supervisorId, status: 'ACTIVE' },
+        update: { status: 'ACTIVE', revokedAt: null, position },
+        create: { projectId, supervisorId, status: 'ACTIVE', position: position ?? 'SUPERVISOR' },
       });
 
       await this.audit.log(
-        { userId: actor.userId, userRole: actor.role, action: 'CREATE', entityType: 'ProjectSupervisor', entityId: assignment.id, newValue: { projectId, supervisorId } },
+        { userId: actor.userId, userRole: actor.role, action: 'CREATE', entityType: 'ProjectSupervisor', entityId: assignment.id, newValue: { projectId, supervisorId, position: assignment.position } },
         tx,
       );
       return assignment;
+    });
+  }
+
+  /** Change la fonction d'un intervenant sur le chantier (superviseur, conducteur de travaux, architecte). */
+  async updateSupervisorPosition(projectId: string, supervisorId: string, position: SupervisorPosition, actor: AuthenticatedUser) {
+    return this.prisma.runInTransaction(async (tx) => {
+      const assignment = await tx.projectSupervisor.findUnique({ where: { projectId_supervisorId: { projectId, supervisorId } } });
+      if (!assignment || assignment.status !== 'ACTIVE') throw AppException.notFound('Affectation');
+      if (assignment.position === position) return assignment;
+
+      // Le dernier superviseur de saisie ne peut pas changer de fonction : plus personne ne pourrait enregistrer de depenses.
+      if (assignment.position === 'SUPERVISOR') {
+        const others = await tx.projectSupervisor.count({ where: { projectId, status: 'ACTIVE', position: 'SUPERVISOR', supervisorId: { not: supervisorId } } });
+        if (others === 0) {
+          throw AppException.conflict('LAST_FIELD_SUPERVISOR', 'Ce chantier doit garder au moins un superviseur de saisie : affectez-en un autre d\'abord.');
+        }
+      }
+      const updated = await tx.projectSupervisor.update({ where: { id: assignment.id }, data: { position } });
+      await this.audit.log(
+        { userId: actor.userId, userRole: actor.role, action: 'UPDATE', entityType: 'ProjectSupervisor', entityId: assignment.id, oldValue: { position: assignment.position }, newValue: { position } },
+        tx,
+      );
+      return updated;
     });
   }
 

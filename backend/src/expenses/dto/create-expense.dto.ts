@@ -1,5 +1,5 @@
 //backend/src/expenses/dto/create-expense.dto.ts
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { ExpensePaymentStatus } from '@prisma/client';
 import { IsMoneyAmount, MAX_INPUT_AMOUNT } from '../../common/validators/money-amount.decorator';
 
@@ -39,4 +39,20 @@ export class CreateExpenseDto {
 
   @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 }) @Max(MAX_INPUT_AMOUNT)
   amountPaidToSupplier?: number;
+
+  // Rattachements analytiques : etape du chantier, fournisseur de l'annuaire, marche de sous-traitance
+  @IsOptional() @IsUUID() phaseId?: string;
+  @IsOptional() @IsUUID() supplierId?: string;
+  @IsOptional() @IsUUID() contractId?: string;
+
+  // Position de l'appareil au moment de la saisie (controle anti-fraude, jamais bloquant)
+  @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false }) @Min(-90) @Max(90)
+  latitude?: number;
+
+  @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false }) @Min(-180) @Max(180)
+  longitude?: number;
+
+  /** Identifiant genere par l'appareil : un rejeu apres une coupure reseau ne cree jamais deux depenses. */
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(64)
+  clientRef?: string;
 }

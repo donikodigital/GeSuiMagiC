@@ -14,11 +14,50 @@ import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
 import { formatMoney, isGreaterThan, isWithinMoneyRange, multiply, roundMoney, subtract, toDecimal } from '../common/utils/money.util';
 import { buildDateRange } from '../common/utils/date-range.util';
+import { assessLocation, LocationAssessment } from '../common/utils/geo.util';
+import { getPosition, isTechnicalReviewer, listTechnicalReviewerUserIds } from '../common/utils/technical-review.util';
+import { SiteNotifierService } from '../site-common/site-notifier.service';
 import { assertProjectAcceptsFinancialOperations } from '../common/utils/project-status.util';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpenseQueryDto } from './dto/expense-query.dto';
 import { UpdateExpensePaymentDto } from './dto/update-expense-payment.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
+import { AllocateExpenseDto } from './dto/allocate-expense.dto';
+import { TechnicalReviewDto } from './dto/technical-review.dto';
+
+/** Types de pieces jointes qui comptent comme justificatif de depense. */
+export const RECEIPT_KINDS = ['facture', 'recu', 'bon_livraison'];
+
+/** Donnees d'une depense a creer (saisie du superviseur, paie, paiement de sous-traitant...). */
+export interface ExpenseInput {
+  date?: string | Date;
+  categoryId: string;
+  materialId?: string;
+  label: string;
+  quantity: number | Prisma.Decimal;
+  unit: string;
+  unitPrice: number | Prisma.Decimal;
+  observation?: string;
+  supplier?: string;
+  invoiceReference?: string;
+  paymentStatus?: ExpensePaymentStatus;
+  amountPaidToSupplier?: number;
+  phaseId?: string;
+  supplierId?: string;
+  contractId?: string;
+  latitude?: number;
+  longitude?: number;
+  clientRef?: string;
+}
+
+export interface CreatedExpense {
+  expense: Prisma.ExpenseGetPayload<object>;
+  status: 'PENDING' | 'APPROVED';
+  cumulativeTriggered: boolean;
+  receiptRequired: boolean;
+  techReviewPending: boolean;
+  location: LocationAssessment;
+}
 
 /** Delai pendant lequel une meme alerte (solde faible, budget depasse) n'est pas renvoyee. */
 const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -43,6 +82,7 @@ export class ExpensesService {
     private readonly notifications: NotificationsService,
     private readonly budgets: BudgetsService,
     private readonly config: ConfigService,
+    private readonly siteNotifier: SiteNotifierService,
   ) {}
 
   private projectUrl(projectId: string, suffix = ''): string {
@@ -67,110 +107,240 @@ export class ExpensesService {
     }
     const supervisorId = actor.supervisorProfileId;
 
+    // Rejeu d'une saisie hors ligne : la depense existe deja, on la renvoie sans rien dupliquer.
+    if (dto.clientRef) {
+      const already = await this.prisma.expense.findFirst({ where: { projectId, clientRef: dto.clientRef }, select: { id: true } });
+      if (already) return this.getRaw(already.id);
+    }
+
     const project = await this.prisma.project.findUnique({ where: { id: projectId } });
     if (!project) throw AppException.notFound('Projet');
     // Un projet suspendu / termine / archive n'accepte plus de nouvelle depense.
     assertProjectAcceptsFinancialOperations(project.status);
 
-    const category = await this.assertCategoryAndMaterial(project.clientId, dto.categoryId, dto.materialId);
+    let result: CreatedExpense;
+    try {
+      // Decision de validation automatique ET insertion dans la MEME transaction (Serializable) :
+      // deux depenses simultanees d'un meme superviseur ne peuvent pas contourner le seuil ensemble.
+      result = await this.prisma.runInTransaction((tx) => this.createInTx(tx, project, actor, supervisorId, dto));
+    } catch (err) {
+      if (dto.clientRef && err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const raced = await this.prisma.expense.findFirst({ where: { projectId, clientRef: dto.clientRef }, select: { id: true } });
+        if (raced) return this.getRaw(raced.id);
+      }
+      throw err;
+    }
 
-    const total = this.computeTotal(dto.quantity, dto.unitPrice);
-    const { paymentStatus, amountPaidToSupplier } = this.resolvePaymentFields(dto.paymentStatus ?? 'PAID_FULL', total, dto.amountPaidToSupplier);
+    await this.afterCreate(project, result, actor);
+    return this.getRaw(result.expense.id);
+  }
 
+  /**
+   * Coeur de la creation d'une depense, partage avec la paie et les paiements de sous-traitance.
+   * Applique TOUTES les regles : seuil de validation, anti-fractionnement, justificatif obligatoire,
+   * validation technique, controle de position. A appeler dans une transaction.
+   */
+  async createInTx(
+    tx: TxClient,
+    project: Prisma.ProjectGetPayload<object>,
+    actor: AuthenticatedUser,
+    supervisorId: string,
+    input: ExpenseInput,
+  ): Promise<CreatedExpense> {
+    const position = await getPosition(tx, project.id, supervisorId);
+    if (position === 'ARCHITECT') {
+      throw AppException.forbidden('ARCHITECT_CANNOT_SPEND', "L'architecte contrôle le chantier mais ne saisit pas de dépenses.");
+    }
+
+    const category = await this.assertCategoryAndMaterial(project.clientId, input.categoryId, input.materialId, tx);
+    const allocation = await this.resolveAllocation(tx, project, input);
+
+    const total = this.computeTotal(input.quantity, input.unitPrice);
+    const { paymentStatus, amountPaidToSupplier } = this.resolvePaymentFields(input.paymentStatus ?? 'PAID_FULL', total, input.amountPaidToSupplier);
     const windowHours = this.config.get<number>('expenses.cumulativeWindowHours') ?? 0;
 
-    // Decision de validation automatique ET insertion dans la MEME transaction (Serializable) :
-    // deux depenses simultanees d'un meme superviseur ne peuvent pas contourner le seuil ensemble.
-    const { expense, initialStatus, cumulativeTriggered } = await this.prisma.runInTransaction(async (tx) => {
-      let requiresClientConfirmation = !project.autoApproveExpenses || isGreaterThan(total, project.expenseApprovalThreshold);
-      let cumulative = false;
+    let requiresClientConfirmation = !project.autoApproveExpenses || isGreaterThan(total, project.expenseApprovalThreshold);
+    let cumulative = false;
 
-      // Anti-fractionnement : une depense isolee sous le seuil mais qui, ajoutee aux depenses recentes du
-      // meme superviseur sur ce projet, depasse le seuil, est soumise au client.
-      if (!requiresClientConfirmation && windowHours > 0) {
-        const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
-        const recent = await tx.expense.aggregate({
-          where: { projectId, supervisorId, createdAt: { gte: since }, status: { in: ['APPROVED', 'PENDING'] } },
-          _sum: { total: true },
-        });
-        if (isGreaterThan(toDecimal(recent._sum.total ?? 0).add(total), project.expenseApprovalThreshold)) {
-          requiresClientConfirmation = true;
-          cumulative = true;
-        }
-      }
-
-      const status = requiresClientConfirmation ? 'PENDING' : 'APPROVED';
-      const created = await tx.expense.create({
-        data: {
-          projectId,
-          supervisorId,
-          date: dto.date ? new Date(dto.date) : new Date(),
-          categoryId: dto.categoryId,
-          materialId: dto.materialId,
-          label: dto.label,
-          quantity: dto.quantity,
-          unit: dto.unit,
-          unitPrice: roundMoney(dto.unitPrice),
-          total,
-          observation: dto.observation,
-          supplier: dto.supplier,
-          invoiceReference: dto.invoiceReference,
-          status,
-          paymentStatus,
-          amountPaidToSupplier,
-          createdById: actor.userId,
-          isLocked: status === 'APPROVED',
-          approvedById: status === 'APPROVED' ? actor.userId : null,
-          approvedAt: status === 'APPROVED' ? new Date() : null,
-        },
+    // Anti-fractionnement : une depense isolee sous le seuil mais qui, ajoutee aux depenses recentes du
+    // meme superviseur sur ce projet, depasse le seuil, est soumise au client.
+    if (!requiresClientConfirmation && windowHours > 0) {
+      const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+      const recent = await tx.expense.aggregate({
+        where: { projectId: project.id, supervisorId, createdAt: { gte: since }, status: { in: ['APPROVED', 'PENDING'] } },
+        _sum: { total: true },
       });
-
-      if (status === 'APPROVED') {
-        await this.wallets.recompute(projectId, tx);
+      if (isGreaterThan(toDecimal(recent._sum.total ?? 0).add(total), project.expenseApprovalThreshold)) {
+        requiresClientConfirmation = true;
+        cumulative = true;
       }
+    }
 
-      await this.audit.log(
-        {
-          userId: actor.userId,
-          userRole: actor.role,
-          action: 'CREATE',
-          entityType: 'Expense',
-          entityId: created.id,
-          newValue: {
-            total: total.toString(),
-            category: category.name,
-            status,
-            projectId,
-            ...(cumulative ? { reason: `Cumul des depenses sur ${windowHours} h superieur au seuil de validation` } : {}),
-          },
-        },
-        tx,
-      );
+    // Justificatif obligatoire au-dessus d'un montant : il ne peut pas encore etre joint a la creation,
+    // donc la depense attend le client, qui ne pourra la valider qu'une fois la piece jointe.
+    const receiptRequired = project.receiptRequiredAbove != null && isGreaterThan(total, project.receiptRequiredAbove);
+    if (receiptRequired) requiresClientConfirmation = true;
 
-      return { expense: created, initialStatus: status, cumulativeTriggered: cumulative };
+    // Validation technique prealable (conducteur de travaux / architecte) : seulement s'il y en a un d'affecte.
+    let techReviewPending = false;
+    if (project.technicalReviewAbove != null && isGreaterThan(total, project.technicalReviewAbove)) {
+      techReviewPending = (await listTechnicalReviewerUserIds(tx, project.id)).length > 0;
+    }
+    if (techReviewPending) requiresClientConfirmation = true;
+
+    const location = assessLocation(project, input.latitude, input.longitude);
+    const status = requiresClientConfirmation ? 'PENDING' : 'APPROVED';
+
+    const created = await tx.expense.create({
+      data: {
+        projectId: project.id,
+        supervisorId,
+        date: input.date ? new Date(input.date) : new Date(),
+        categoryId: input.categoryId,
+        materialId: input.materialId,
+        label: input.label,
+        quantity: input.quantity,
+        unit: input.unit,
+        unitPrice: roundMoney(input.unitPrice),
+        total,
+        observation: input.observation,
+        supplier: input.supplier ?? allocation.supplierName ?? undefined,
+        invoiceReference: input.invoiceReference,
+        phaseId: allocation.phaseId,
+        supplierId: allocation.supplierId,
+        contractId: allocation.contractId,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        isOffSite: location.isOffSite,
+        distanceMeters: location.distanceMeters,
+        techReviewStatus: techReviewPending ? 'PENDING' : 'NOT_REQUIRED',
+        clientRef: input.clientRef,
+        status,
+        paymentStatus,
+        amountPaidToSupplier,
+        createdById: actor.userId,
+        isLocked: status === 'APPROVED',
+        approvedById: status === 'APPROVED' ? actor.userId : null,
+        approvedAt: status === 'APPROVED' ? new Date() : null,
+      },
     });
 
-    if (initialStatus === 'PENDING') {
+    if (status === 'APPROVED') {
+      await this.wallets.recompute(project.id, tx);
+    }
+
+    await this.audit.log(
+      {
+        userId: actor.userId,
+        userRole: actor.role,
+        action: 'CREATE',
+        entityType: 'Expense',
+        entityId: created.id,
+        newValue: {
+          total: total.toString(),
+          category: category.name,
+          status,
+          projectId: project.id,
+          phaseId: allocation.phaseId,
+          ...(cumulative ? { reason: `Cumul des depenses sur ${windowHours} h superieur au seuil de validation` } : {}),
+          ...(receiptRequired ? { receiptRequired: true } : {}),
+          ...(techReviewPending ? { technicalReview: 'PENDING' } : {}),
+          ...(location.isOffSite ? { offSite: true, distanceMeters: location.distanceMeters } : {}),
+        },
+      },
+      tx,
+    );
+
+    return { expense: created, status, cumulativeTriggered: cumulative, receiptRequired, techReviewPending, location };
+  }
+
+  /** Notifications et alertes qui suivent une creation de depense (jamais bloquantes). */
+  async afterCreate(project: Prisma.ProjectGetPayload<object>, created: CreatedExpense, actor: AuthenticatedUser): Promise<void> {
+    const { expense, status, cumulativeTriggered, receiptRequired, techReviewPending, location } = created;
+    const total = expense.total;
+
+    if (status === 'PENDING') {
       await this.afterCommit(async () => {
         const client = await this.prisma.clientProfile.findUnique({ where: { id: project.clientId }, select: { userId: true, firstName: true } });
         if (!client) return;
+        const reason = cumulativeTriggered
+          ? `La dépense "${expense.label}" de ${formatMoney(total, project.currency)} porte le cumul récent du superviseur au-dessus du seuil : votre confirmation est requise.`
+          : receiptRequired
+            ? `La dépense "${expense.label}" de ${formatMoney(total, project.currency)} exige un justificatif : vous pourrez la valider une fois la pièce jointe ajoutée.`
+            : `Une dépense importante "${expense.label}" de ${formatMoney(total, project.currency)} nécessite votre confirmation.`;
         await this.notifications.send({
           userId: client.userId,
           type: 'EXPENSE_PENDING_APPROVAL',
           title: 'Dépense en attente de votre validation',
-          message: cumulativeTriggered
-            ? `La dépense "${dto.label}" de ${formatMoney(total, project.currency)} porte le cumul récent du superviseur au-dessus du seuil : votre confirmation est requise.`
-            : `Une dépense importante "${dto.label}" de ${formatMoney(total, project.currency)} nécessite votre confirmation.`,
-          emailHtml: emailTemplates.expensePendingApproval(client.firstName, project.name, formatMoney(total, project.currency), dto.label, this.projectUrl(projectId, `/expenses/${expense.id}`)),
+          message: reason,
+          emailHtml: emailTemplates.expensePendingApproval(client.firstName, project.name, formatMoney(total, project.currency), expense.label, this.projectUrl(project.id, `/expenses/${expense.id}`)),
           emailSubject: 'Dépense en attente de validation',
-          meta: { projectId, expenseId: expense.id },
+          meta: { projectId: project.id, expenseId: expense.id },
         });
       });
     } else {
-      await this.runPostApprovalAlerts(projectId, dto.categoryId, total, project.currency);
+      await this.runPostApprovalAlerts(project.id, expense.categoryId, total, project.currency);
     }
 
-    return this.getRaw(expense.id);
+    if (techReviewPending) {
+      await this.siteNotifier.toReviewers(
+        project.id,
+        {
+          type: 'TECH_REVIEW_REQUESTED',
+          title: 'Validation technique demandée',
+          message: `La dépense "${expense.label}" de ${formatMoney(total, project.currency)} (${project.name}) attend votre validation technique.`,
+          path: `/expenses/${expense.id}`,
+          meta: { expenseId: expense.id },
+        },
+        actor.userId,
+      );
+    }
+
+    if (location.isOffSite) {
+      await this.siteNotifier.toClient(project, {
+        type: 'LOCATION_ALERT',
+        title: 'Dépense saisie loin du chantier',
+        message: `La dépense "${expense.label}" (${project.name}) a été saisie à environ ${location.distanceMeters} m du chantier (rayon autorisé : ${project.geoFenceMeters} m).`,
+        path: `/expenses/${expense.id}`,
+        meta: { expenseId: expense.id },
+      });
+    }
+  }
+
+  /**
+   * Controle et resout les rattachements analytiques d'une depense : etape du projet, fournisseur de l'annuaire du client,
+   * marche de sous-traitance du projet (qui impose son fournisseur et, a defaut, son etape).
+   */
+  private async resolveAllocation(
+    client: TxClient | PrismaService,
+    project: { id: string; clientId: string },
+    input: { phaseId?: string | null; supplierId?: string | null; contractId?: string | null },
+  ) {
+    let phaseId = input.phaseId ?? null;
+    let supplierId = input.supplierId ?? null;
+    const contractId = input.contractId ?? null;
+    let supplierName: string | null = null;
+
+    if (contractId) {
+      const contract = await client.contract.findFirst({ where: { id: contractId, projectId: project.id }, select: { supplierId: true, phaseId: true, status: true } });
+      if (!contract) throw AppException.badRequest('INVALID_CONTRACT', "Ce marché n'existe pas sur ce projet.");
+      if (contract.status === 'CANCELLED') throw AppException.badRequest('INVALID_CONTRACT', 'Ce marché est annulé.');
+      if (supplierId && supplierId !== contract.supplierId) {
+        throw AppException.badRequest('SUPPLIER_CONTRACT_MISMATCH', "Le fournisseur indiqué n'est pas celui de ce marché.");
+      }
+      supplierId = contract.supplierId;
+      phaseId = phaseId ?? contract.phaseId;
+    }
+    if (phaseId) {
+      const phase = await client.projectPhase.findFirst({ where: { id: phaseId, projectId: project.id }, select: { isActive: true } });
+      if (!phase || !phase.isActive) throw AppException.badRequest('INVALID_PHASE', "Cette étape n'existe pas ou n'est plus active.");
+    }
+    if (supplierId) {
+      const supplier = await client.supplier.findFirst({ where: { id: supplierId, ownerClientId: project.clientId }, select: { name: true, isActive: true } });
+      if (!supplier || !supplier.isActive) throw AppException.badRequest('INVALID_SUPPLIER', "Ce fournisseur n'existe pas ou n'est plus actif.");
+      supplierName = supplier.name;
+    }
+    return { phaseId, supplierId, contractId, supplierName };
   }
 
   // ------------------------------------------------------------------
@@ -192,6 +362,11 @@ export class ExpensesService {
       status: query.status,
       categoryId: query.categoryId,
       materialId: query.materialId,
+      phaseId: query.phaseId,
+      supplierId: query.supplierId,
+      contractId: query.contractId,
+      techReviewStatus: query.techReviewStatus,
+      isOffSite: query.offSite ? true : undefined,
       supervisorId,
       isArchived: query.includeArchived ? undefined : false,
       supplier: query.supplier ? { contains: query.supplier, mode: 'insensitive' } : undefined,
@@ -217,8 +392,11 @@ export class ExpensesService {
         include: {
           category: true,
           material: true,
+          phase: { select: { id: true, name: true } },
+          supplierRef: { select: { id: true, name: true } },
           supervisor: { select: { firstName: true, lastName: true } },
           attachments: true,
+          project: { select: { receiptRequiredAbove: true } },
         },
         orderBy: { date: 'desc' },
         skip: (page - 1) * limit,
@@ -227,7 +405,7 @@ export class ExpensesService {
       this.prisma.expense.count({ where }),
     ]);
 
-    return { items: items.map((e) => this.withComputedBalanceDue(e)), meta: buildPaginationMeta(page, limit, total) };
+    return { items: items.map((e) => this.decorate(e)), meta: buildPaginationMeta(page, limit, total) };
   }
 
   /**
@@ -240,13 +418,15 @@ export class ExpensesService {
       include: {
         category: true,
         material: true,
+        phase: { select: { id: true, name: true } },
+        supplierRef: { select: { id: true, name: true } },
         supervisor: { select: { id: true, firstName: true, lastName: true } },
-        project: { select: { id: true, name: true, currency: true, clientId: true } },
+        project: { select: { id: true, name: true, currency: true, clientId: true, receiptRequiredAbove: true } },
         attachments: true,
       },
     });
     if (!expense) throw AppException.notFound('Dépense');
-    return this.withComputedBalanceDue(expense);
+    return this.decorate(expense);
   }
 
   async findOne(id: string, actor: AuthenticatedUser) {
@@ -275,6 +455,18 @@ export class ExpensesService {
 
   async approve(id: string, actor: AuthenticatedUser) {
     const expense = await this.loadForClientDecision(id, actor);
+
+    // Double validation : la validation technique doit etre donnee AVANT celle du client.
+    if (expense.techReviewStatus === 'PENDING') {
+      throw AppException.conflict('TECH_REVIEW_PENDING', 'Cette dépense attend encore la validation technique du conducteur de travaux ou de l\'architecte.');
+    }
+    // Justificatif obligatoire au-dessus du montant fixe pour le projet.
+    if (expense.project.receiptRequiredAbove != null && isGreaterThan(expense.total, expense.project.receiptRequiredAbove)) {
+      const receipts = await this.prisma.attachment.count({ where: { expenseId: id, kind: { in: RECEIPT_KINDS } } });
+      if (receipts === 0) {
+        throw AppException.conflict('RECEIPT_REQUIRED', 'Un justificatif (facture, reçu ou bon de livraison) est obligatoire pour valider cette dépense.');
+      }
+    }
 
     await this.prisma.runInTransaction(async (tx) => {
       const updated = await tx.expense.updateMany({
@@ -328,6 +520,124 @@ export class ExpensesService {
       message: `Votre dépense "${expense.label}" de ${formatMoney(expense.total, expense.project.currency)} a été refusée : ${reason}`,
     });
 
+    return this.getRaw(id);
+  }
+
+  // ------------------------------------------------------------------
+  // VALIDATION TECHNIQUE (conducteur de travaux / architecte)
+  // ------------------------------------------------------------------
+  async technicalReview(id: string, dto: TechnicalReviewDto, actor: AuthenticatedUser) {
+    const expense = await this.prisma.expense.findUnique({
+      where: { id },
+      include: { project: true, supervisor: { select: { userId: true } } },
+    });
+    if (!expense) throw AppException.notFound('Dépense');
+
+    if (!(await isTechnicalReviewer(this.prisma, expense.projectId, actor))) throw AppException.forbiddenProjectAccess();
+    // Une personne ne valide jamais sa propre dépense (double validation réelle).
+    if (actor.role !== 'SUPERADMIN' && expense.supervisorId === actor.supervisorProfileId) {
+      throw AppException.forbidden('SELF_REVIEW', 'Vous ne pouvez pas valider techniquement votre propre dépense.');
+    }
+    if (expense.status !== 'PENDING' || expense.techReviewStatus !== 'PENDING') {
+      throw AppException.conflict('TECH_REVIEW_NOT_PENDING', "Cette dépense n'attend pas de validation technique.");
+    }
+    if (dto.decision === 'REJECTED' && !dto.note?.trim()) {
+      throw AppException.badRequest('NOTE_REQUIRED', 'Indiquez le motif du refus.');
+    }
+
+    await this.prisma.runInTransaction(async (tx) => {
+      const approved = dto.decision === 'APPROVED';
+      const updated = await tx.expense.updateMany({
+        where: { id, status: 'PENDING', techReviewStatus: 'PENDING' },
+        data: {
+          techReviewStatus: approved ? 'APPROVED' : 'REJECTED',
+          techReviewedById: actor.userId,
+          techReviewedAt: new Date(),
+          techReviewNote: dto.note?.trim() || null,
+          ...(approved ? {} : { status: 'REJECTED', rejectionReason: `Refus technique : ${dto.note!.trim()}` }),
+        },
+      });
+      if (updated.count !== 1) throw AppException.conflict('TECH_REVIEW_NOT_PENDING', "Cette dépense n'attend pas de validation technique.");
+
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          userRole: actor.role,
+          action: approved ? 'APPROVE' : 'REJECT',
+          entityType: 'Expense',
+          entityId: id,
+          oldValue: { techReviewStatus: 'PENDING' },
+          newValue: { techReviewStatus: approved ? 'APPROVED' : 'REJECTED', note: dto.note ?? null },
+          reason: dto.note,
+        },
+        tx,
+      );
+    });
+
+    await this.afterCommit(async () => {
+      if (dto.decision === 'APPROVED') {
+        await this.siteNotifier.toClient(expense.project, {
+          type: 'EXPENSE_PENDING_APPROVAL',
+          title: 'Dépense validée techniquement',
+          message: `La dépense "${expense.label}" de ${formatMoney(expense.total, expense.project.currency)} est validée techniquement : elle attend votre décision.`,
+          path: `/expenses/${id}`,
+          meta: { expenseId: id },
+        });
+      } else {
+        await this.notifications.send({
+          userId: expense.supervisor.userId,
+          type: 'EXPENSE_REJECTED',
+          title: 'Dépense refusée techniquement',
+          message: `Votre dépense "${expense.label}" a été refusée par la validation technique : ${dto.note}`,
+          meta: { projectId: expense.projectId, expenseId: id },
+        });
+      }
+    });
+
+    return this.getRaw(id);
+  }
+
+  // ------------------------------------------------------------------
+  // RATTACHEMENT ANALYTIQUE (etape, fournisseur) - sans effet sur les montants
+  // ------------------------------------------------------------------
+  async setAllocation(id: string, dto: AllocateExpenseDto, actor: AuthenticatedUser) {
+    const current = await this.prisma.expense.findUnique({ where: { id }, include: { project: { select: { id: true, clientId: true } } } });
+    if (!current) throw AppException.notFound('Dépense');
+
+    const allowed =
+      actor.role === 'SUPERADMIN' ||
+      (actor.role === 'CLIENT' && actor.clientProfileId === current.project.clientId) ||
+      (actor.role === 'SUPERVISOR' && !!actor.supervisorProfileId && actor.supervisorProfileId === current.supervisorId);
+    if (!allowed) throw AppException.forbiddenProjectAccess();
+    if (current.status === 'CANCELLED') throw AppException.conflict('EXPENSE_CANCELLED', 'Une dépense annulée ne peut plus être rattachée.');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      const next = await this.resolveAllocation(tx, current.project, {
+        phaseId: dto.phaseId === undefined ? current.phaseId : dto.phaseId,
+        supplierId: dto.supplierId === undefined ? current.supplierId : dto.supplierId,
+        contractId: current.contractId,
+      });
+      await tx.expense.update({
+        where: { id },
+        data: {
+          phaseId: next.phaseId,
+          supplierId: next.supplierId,
+          supplier: dto.supplierId && !current.supplier ? next.supplierName : undefined,
+        },
+      });
+      await this.audit.log(
+        {
+          userId: actor.userId,
+          userRole: actor.role,
+          action: 'UPDATE',
+          entityType: 'Expense',
+          entityId: id,
+          oldValue: { phaseId: current.phaseId, supplierId: current.supplierId },
+          newValue: { phaseId: next.phaseId, supplierId: next.supplierId },
+        },
+        tx,
+      );
+    });
     return this.getRaw(id);
   }
 
@@ -492,6 +802,16 @@ export class ExpensesService {
         );
       }
 
+      let allocation: { phaseId: string | null; supplierId: string | null } | undefined;
+      if (dto.phaseId !== undefined || dto.supplierId !== undefined) {
+        const owner = await tx.project.findUniqueOrThrow({ where: { id: current.projectId }, select: { id: true, clientId: true } });
+        allocation = await this.resolveAllocation(tx, owner, {
+          phaseId: dto.phaseId === undefined ? current.phaseId : dto.phaseId,
+          supplierId: dto.supplierId === undefined ? current.supplierId : dto.supplierId,
+          contractId: current.contractId,
+        });
+      }
+
       const nextQuantity = dto.quantity !== undefined ? toDecimal(dto.quantity) : current.quantity;
       const nextUnitPrice = dto.unitPrice !== undefined ? roundMoney(dto.unitPrice) : current.unitPrice;
       const newTotal = totalChanges ? this.computeTotal(nextQuantity, nextUnitPrice) : current.total;
@@ -514,6 +834,8 @@ export class ExpensesService {
       if (dto.observation !== undefined) labels.push('Observation');
       if (dto.supplier !== undefined) labels.push('Fournisseur');
       if (dto.invoiceReference !== undefined) labels.push('Référence facture');
+      if (dto.phaseId !== undefined) labels.push('Étape');
+      if (dto.supplierId !== undefined) labels.push('Fournisseur (annuaire)');
       if (dto.paymentStatus !== undefined || dto.amountPaidToSupplier !== undefined) labels.push('Paiement fournisseur');
 
       await tx.expense.update({
@@ -530,6 +852,8 @@ export class ExpensesService {
           observation: dto.observation,
           supplier: dto.supplier,
           invoiceReference: dto.invoiceReference,
+          phaseId: allocation ? allocation.phaseId : undefined,
+          supplierId: allocation ? allocation.supplierId : undefined,
           paymentStatus: paymentChanged ? payment.paymentStatus : undefined,
           amountPaidToSupplier: paymentChanged ? payment.amountPaidToSupplier : undefined,
         },
@@ -708,6 +1032,13 @@ export class ExpensesService {
 
   private withComputedBalanceDue<T extends { total: Prisma.Decimal; amountPaidToSupplier: Prisma.Decimal }>(expense: T) {
     return { ...expense, balanceDueToSupplier: subtract(expense.total, expense.amountPaidToSupplier) };
+  }
+
+  /** Reste a payer + etat du justificatif (obligatoire au-dessus d'un montant, joint ou non). */
+  private decorate<T extends { total: Prisma.Decimal; amountPaidToSupplier: Prisma.Decimal; attachments: { kind: string }[]; project: { receiptRequiredAbove: Prisma.Decimal | null } }>(expense: T) {
+    const receiptRequired = expense.project.receiptRequiredAbove != null && isGreaterThan(expense.total, expense.project.receiptRequiredAbove);
+    const hasReceipt = expense.attachments.some((a) => RECEIPT_KINDS.includes(a.kind));
+    return { ...this.withComputedBalanceDue(expense), receiptRequired, hasReceipt };
   }
 
   /** Vrai si une alerte du meme type/projet/cible a deja ete envoyee dans les dernieres 24 h. */

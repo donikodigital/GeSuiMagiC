@@ -1,12 +1,13 @@
-// frontend/src/app/(app)/projects/[id]/expenses/[expenseId]/page.tsx - v1.2
-// Meme ajout : bouton "Contacter le superadmin" pour isClient, ouvre
-// ComposeMessageDialog pre-rempli avec le contexte de la depense.
+//frontend/src/app/(app)/projects/[id]/expenses/[expenseId]/page.tsx
+// Fiche depense : validation du client, justificatif obligatoire au-dessus du seuil, validation technique prealable
+// (conducteur de travaux / architecte), rattachement a une etape et a un fournisseur, position de saisie.
+// Bouton "Contacter le superadmin" pour le client.
 
 'use client';
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Archive, ArchiveRestore, ArrowLeft, Ban, Check, CreditCard, MessageCircle, Paperclip, Pencil, ReceiptText, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, Ban, Check, CreditCard, HardHat, Layers, MapPinOff, MessageCircle, Paperclip, Pencil, ReceiptText, ShieldCheck, Trash2, X } from 'lucide-react';
 import {
   useExpense,
   useApproveExpense,
@@ -21,7 +22,8 @@ import { useCreateMessage } from '@/hooks/use-messages';
 import { useAuth } from '@/hooks/use-auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/input';
+import { Dialog } from '@/components/ui/dialog';
+import { FormField, Select, Textarea } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { PageSpinner, ErrorState } from '@/components/ui/misc';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
@@ -29,6 +31,11 @@ import { AttachmentsSection } from '@/components/shared/attachments-section';
 import { CorrectionDialog } from '@/components/shared/correction-dialog';
 import { EditExpenseDialog } from '@/components/expenses/edit-expense-dialog';
 import { ComposeMessageDialog } from '@/components/messages/compose-message-dialog';
+import { PhaseSelect } from '@/components/site/phase-select';
+import { useSiteMutation, useSitePermissions, useSuppliers } from '@/hooks/use-site';
+import { siteService } from '@/services/site.service';
+import { techReviewMeta } from '@/lib/site-format';
+import { usePhases } from '@/hooks/use-attendance';
 import { expenseStatusMeta, expensePaymentStatusMeta, formatDateTime, formatMoney } from '@/lib/format';
 import { expensesService } from '@/services/expenses.service';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -55,6 +62,10 @@ export default function ExpenseDetailPage() {
   const [editing, setEditing] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [contacting, setContacting] = React.useState(false);
+  const [reviewing, setReviewing] = React.useState<'APPROVED' | 'REJECTED' | null>(null);
+  const [allocating, setAllocating] = React.useState(false);
+  const permissions = useSitePermissions(params.id);
+  const { data: phases } = usePhases(params.id);
 
   const { data: expense, isLoading, isError } = useExpense(params.expenseId);
   const approveMutation = useApproveExpense(params.id);
@@ -80,7 +91,13 @@ export default function ExpenseDetailPage() {
   if (isLoading) return <PageSpinner />;
   if (isError || !expense) return <ErrorState message="Impossible de charger cette dépense." />;
 
+  const techPending = expense.status === 'PENDING' && expense.techReviewStatus === 'PENDING';
+  const receiptMissing = !!expense.receiptRequired && !expense.hasReceipt;
+  const canTechReview = techPending && permissions.techReview;
+  // Le client valide apres la validation technique (si elle est requise) et avec le justificatif (si requis).
   const canAct = isClient && expense.status === 'PENDING';
+  const approveBlocked = techPending || receiptMissing;
+  const canAllocate = (isSuperadmin || isClient || isSupervisor) && expense.status !== 'CANCELLED';
   const canUpdatePayment = (isSupervisor || isSuperadmin) && expense.status === 'APPROVED';
   const statusTone = expenseStatusMeta[expense.status].tone;
 
@@ -113,11 +130,51 @@ export default function ExpenseDetailPage() {
             <Field label="Date" value={formatDateTime(expense.date)} />
             <Field label="Quantité" value={`${expense.quantity} ${expense.unit} × ${formatMoney(expense.unitPrice, '')}`} />
             <Field label="Fournisseur" value={expense.supplier || '-'} />
+            <Field label="Étape du chantier" value={phases?.find((ph) => ph.id === expense.phaseId)?.name ?? 'Non rattachée'} />
             <Field label="Référence facture" value={expense.invoiceReference || '-'} />
             {expense.supervisor && <Field label="Enregistrée par" value={`${expense.supervisor.firstName} ${expense.supervisor.lastName}`} full />}
             {expense.observation && <Field label="Observation" value={expense.observation} full />}
             {expense.rejectionReason && <Field label="Motif" value={expense.rejectionReason} full />}
           </dl>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {expense.techReviewStatus && expense.techReviewStatus !== 'NOT_REQUIRED' && <StatusBadge label={techReviewMeta[expense.techReviewStatus].label} tone={techReviewMeta[expense.techReviewStatus].tone} />}
+            {expense.receiptRequired && <StatusBadge label={expense.hasReceipt ? 'Justificatif joint' : 'Justificatif obligatoire manquant'} tone={expense.hasReceipt ? 'moss' : 'clay'} />}
+            {expense.latitude && expense.isOffSite && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-clay-50 px-2.5 py-0.5 text-xs font-medium text-clay-600">
+                <MapPinOff className="h-3.5 w-3.5" /> Saisie hors du chantier
+              </span>
+            )}
+            {canAllocate && (
+              <Button size="sm" variant="ghost" onClick={() => setAllocating(true)}>
+                <Layers className="h-4 w-4" /> Étape / fournisseur
+              </Button>
+            )}
+          </div>
+
+          {expense.techReviewNote && (
+            <p className="rounded-card bg-paper px-4 py-3 text-sm text-ink-600">
+              <span className="font-medium text-ink-800">Avis technique : </span>
+              {expense.techReviewNote}
+            </p>
+          )}
+
+          {canTechReview && (
+            <div className="rounded-card border border-safety-200 bg-safety-50/60 px-4 py-3.5">
+              <div className="flex items-center gap-2 text-sm font-medium text-ink-800">
+                <HardHat className="h-4 w-4 text-safety-500" /> Cette dépense attend votre validation technique
+              </div>
+              <p className="mt-1 text-xs text-ink-500">Vérifiez que le montant et les quantités correspondent aux travaux réalisés, puis le client validera le paiement.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setReviewing('APPROVED')}>
+                  <ShieldCheck className="h-4 w-4" /> Valider techniquement
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setReviewing('REJECTED')}>
+                  <X className="h-4 w-4" /> Refuser
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-card border border-concrete bg-white px-4 py-3.5">
             <div className="flex items-center justify-between gap-2">
@@ -149,13 +206,19 @@ export default function ExpenseDetailPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Pièces jointes</p>
             </div>
             <AttachmentsSection target={{ expenseId: expense.id }} readOnly={expense.isLocked && !isSuperadmin} />
+            {receiptMissing && <p className="mt-2 text-xs text-clay-600">Joignez la facture ou le reçu : sans lui, cette dépense ne peut pas être validée.</p>}
           </div>
 
           {(canAct || isSuperadmin || isClient) && (
             <div className="flex flex-wrap gap-2 border-t border-concrete pt-4">
               {canAct && (
                 <>
-                  <Button onClick={() => approveMutation.mutate(expense.id)} loading={approveMutation.isPending}>
+                  <Button
+                    onClick={() => approveMutation.mutate(expense.id)}
+                    loading={approveMutation.isPending}
+                    disabled={approveBlocked}
+                    title={techPending ? 'En attente de la validation technique' : receiptMissing ? 'Justificatif manquant' : undefined}
+                  >
                     <Check className="h-4 w-4" /> Valider
                   </Button>
                   <Button variant="outline" onClick={() => setRejecting(true)}>
@@ -202,6 +265,9 @@ export default function ExpenseDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <TechReviewDialog decision={reviewing} onClose={() => setReviewing(null)} projectId={params.id} expenseId={expense.id} />
+      <AllocationDialog open={allocating} onClose={() => setAllocating(false)} projectId={params.id} expenseId={expense.id} phaseId={expense.phaseId ?? ''} supplierId={expense.supplierId ?? ''} />
 
       <ReasonDialog
         open={rejecting}
@@ -266,6 +332,86 @@ export default function ExpenseDetailPage() {
         onSubmit={(payload) => createMessageMutation.mutate(payload, { onSuccess: () => setContacting(false) })}
       />
     </div>
+  );
+}
+
+function TechReviewDialog({ decision, onClose, projectId, expenseId }: { decision: 'APPROVED' | 'REJECTED' | null; onClose: () => void; projectId: string; expenseId: string }) {
+  const review = useSiteMutation(projectId, (v: { decision: 'APPROVED' | 'REJECTED'; note?: string }) => siteService.techReview(expenseId, v), { success: 'Avis technique enregistré.', error: "Impossible d'enregistrer l'avis." });
+  const [note, setNote] = React.useState('');
+  React.useEffect(() => setNote(''), [decision]);
+  if (!decision) return null;
+  const refusing = decision === 'REJECTED';
+  return (
+    <Dialog open onClose={onClose} title={refusing ? 'Refuser techniquement' : 'Valider techniquement'} description={refusing ? 'La dépense sera refusée : indiquez pourquoi.' : 'Le client pourra ensuite valider le paiement.'}>
+      <form
+        className="space-y-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (refusing && note.trim().length < 3) return;
+          await review.mutateAsync({ decision, note: note.trim() || undefined });
+          onClose();
+        }}
+      >
+        <FormField label={refusing ? 'Motif du refus' : 'Remarque (facultatif)'} required={refusing}>
+          <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} />
+        </FormField>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Retour
+          </Button>
+          <Button type="submit" variant={refusing ? 'danger' : undefined} loading={review.isPending} disabled={refusing && note.trim().length < 3}>
+            {refusing ? 'Refuser' : 'Valider'}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function AllocationDialog({ open, onClose, projectId, expenseId, phaseId: initialPhase, supplierId: initialSupplier }: { open: boolean; onClose: () => void; projectId: string; expenseId: string; phaseId: string; supplierId: string }) {
+  const allocate = useSiteMutation(projectId, (v: { phaseId: string | null; supplierId: string | null }) => siteService.allocateExpense(expenseId, v), { success: 'Dépense rattachée.', error: 'Impossible de rattacher la dépense.' });
+  const { data: suppliers } = useSuppliers(projectId);
+  const [phaseId, setPhaseId] = React.useState(initialPhase);
+  const [supplierId, setSupplierId] = React.useState(initialSupplier);
+  React.useEffect(() => {
+    if (open) {
+      setPhaseId(initialPhase);
+      setSupplierId(initialSupplier);
+    }
+  }, [open, initialPhase, initialSupplier]);
+  return (
+    <Dialog open={open} onClose={onClose} title="Rattacher la dépense" description="Le coût réel de chaque étape se calcule à partir de ce rattachement.">
+      <form
+        className="space-y-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await allocate.mutateAsync({ phaseId: phaseId || null, supplierId: supplierId || null });
+          onClose();
+        }}
+      >
+        <FormField label="Étape du chantier">
+          <PhaseSelect projectId={projectId} value={phaseId} onChange={setPhaseId} emptyLabel="Non rattachée" />
+        </FormField>
+        <FormField label="Fournisseur de l'annuaire">
+          <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <option value="">Aucun</option>
+            {(suppliers ?? []).map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button type="submit" loading={allocate.isPending}>
+            Enregistrer
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

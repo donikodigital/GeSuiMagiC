@@ -7,6 +7,9 @@ import { AppException } from '../common/exceptions/app.exception';
 import { summarizeByPhase } from './attendance.calc';
 import { createDefaultPhases } from './attendance.constants';
 import { findProjectOrThrow } from './attendance.helpers';
+import { parseIsoDate, toIsoDate } from '../common/utils/month.util';
+import { roundMoney } from '../common/utils/money.util';
+import { assertSiteRole, getSiteRole, OWNERS } from '../site-common/site-access';
 import { CreatePhaseDto } from './dto/create-phase.dto';
 import { UpdatePhaseDto } from './dto/update-phase.dto';
 import { ReorderPhasesDto } from './dto/reorder-phases.dto';
@@ -48,6 +51,9 @@ export class PhasesService {
   async create(projectId: string, dto: CreatePhaseDto, actor: AuthenticatedUser) {
     await findProjectOrThrow(this.prisma, projectId);
     const name = dto.name.trim();
+    if (dto.budgetAmount !== undefined) await this.assertBudgetRight(projectId, actor);
+    if (dto.plannedStart !== undefined || dto.plannedEnd !== undefined) await this.assertPlanningRight(projectId, actor);
+    const planned = this.parsePlanning(dto, { plannedStart: null, plannedEnd: null });
 
     return this.prisma.runInTransaction(async (tx) => {
       const clash = await tx.projectPhase.findFirst({
@@ -57,7 +63,16 @@ export class PhasesService {
       if (clash) throw AppException.conflict('PHASE_NAME_TAKEN', 'Une étape porte déjà ce nom.');
 
       const last = await tx.projectPhase.aggregate({ where: { projectId }, _max: { position: true } });
-      const created = await tx.projectPhase.create({ data: { projectId, name, position: (last._max.position ?? -1) + 1 } });
+      const created = await tx.projectPhase.create({
+        data: {
+          projectId,
+          name,
+          position: (last._max.position ?? -1) + 1,
+          budgetAmount: dto.budgetAmount !== undefined ? roundMoney(dto.budgetAmount) : undefined,
+          plannedStart: planned.plannedStart ?? undefined,
+          plannedEnd: planned.plannedEnd ?? undefined,
+        },
+      });
 
       await this.audit.log(
         { userId: actor.userId, userRole: actor.role, action: 'CREATE', entityType: 'ProjectPhase', entityId: created.id, newValue: { projectId, name } },
@@ -83,10 +98,45 @@ export class PhasesService {
     return this.listWithStats(projectId);
   }
 
+  /** Le planning previsionnel est reserve au client, au superadmin et au conducteur de travaux. */
+  private async assertPlanningRight(projectId: string, actor: AuthenticatedUser): Promise<void> {
+    const role = await getSiteRole(this.prisma, projectId, actor);
+    assertSiteRole(role, [...OWNERS, 'SITE_MANAGER'], 'Seuls le client et le conducteur de travaux modifient le planning.');
+  }
+
+  private async assertBudgetRight(projectId: string, actor: AuthenticatedUser): Promise<void> {
+    assertSiteRole(await getSiteRole(this.prisma, projectId, actor), OWNERS, "Seuls le client et le superadministrateur fixent le budget d'une étape.");
+  }
+
+  /** Dates a ecrire (undefined = inchange, null = effacee) ; debut <= fin. */
+  private parsePlanning(
+    dto: { plannedStart?: string | null; plannedEnd?: string | null },
+    current: { plannedStart: Date | null; plannedEnd: Date | null },
+  ): { plannedStart: Date | null | undefined; plannedEnd: Date | null | undefined } {
+    const parse = (value: string | null | undefined): Date | null | undefined => {
+      if (value === undefined || value === null) return value;
+      const date = parseIsoDate(value);
+      if (!date) throw AppException.badRequest('INVALID_DATE', 'La date doit etre au format AAAA-MM-JJ.');
+      return date;
+    };
+    const plannedStart = parse(dto.plannedStart);
+    const plannedEnd = parse(dto.plannedEnd);
+    const start = plannedStart === undefined ? current.plannedStart : plannedStart;
+    const end = plannedEnd === undefined ? current.plannedEnd : plannedEnd;
+    if (start && end && start.getTime() > end.getTime()) {
+      throw AppException.badRequest('INVALID_PLANNING', 'La date de début doit précéder la date de fin.');
+    }
+    return { plannedStart, plannedEnd };
+  }
+
   async update(projectId: string, phaseId: string, dto: UpdatePhaseDto, actor: AuthenticatedUser) {
+    if (dto.budgetAmount !== undefined) await this.assertBudgetRight(projectId, actor);
+    if (dto.plannedStart !== undefined || dto.plannedEnd !== undefined) await this.assertPlanningRight(projectId, actor);
+
     return this.prisma.runInTransaction(async (tx) => {
       const phase = await tx.projectPhase.findFirst({ where: { id: phaseId, projectId } });
       if (!phase) throw AppException.notFound('Étape');
+      const planned = this.parsePlanning(dto, phase);
 
       const name = dto.name?.trim();
       if (name && name.toLowerCase() !== phase.name.toLowerCase()) {
@@ -99,7 +149,13 @@ export class PhasesService {
 
       const updated = await tx.projectPhase.update({
         where: { id: phaseId },
-        data: { name: name ?? undefined, isActive: dto.isActive },
+        data: {
+          name: name ?? undefined,
+          isActive: dto.isActive,
+          budgetAmount: dto.budgetAmount === undefined ? undefined : dto.budgetAmount === null ? null : roundMoney(dto.budgetAmount),
+          plannedStart: planned.plannedStart,
+          plannedEnd: planned.plannedEnd,
+        },
       });
 
       await this.audit.log(
@@ -109,8 +165,20 @@ export class PhasesService {
           action: 'UPDATE',
           entityType: 'ProjectPhase',
           entityId: phaseId,
-          oldValue: { name: phase.name, isActive: phase.isActive },
-          newValue: { name: updated.name, isActive: updated.isActive },
+          oldValue: {
+            name: phase.name,
+            isActive: phase.isActive,
+            budgetAmount: phase.budgetAmount?.toString() ?? null,
+            plannedStart: phase.plannedStart ? toIsoDate(phase.plannedStart) : null,
+            plannedEnd: phase.plannedEnd ? toIsoDate(phase.plannedEnd) : null,
+          },
+          newValue: {
+            name: updated.name,
+            isActive: updated.isActive,
+            budgetAmount: updated.budgetAmount?.toString() ?? null,
+            plannedStart: updated.plannedStart ? toIsoDate(updated.plannedStart) : null,
+            plannedEnd: updated.plannedEnd ? toIsoDate(updated.plannedEnd) : null,
+          },
         },
         tx,
       );
@@ -144,9 +212,25 @@ export class PhasesService {
       const phase = await tx.projectPhase.findFirst({ where: { id: phaseId, projectId } });
       if (!phase) throw AppException.notFound('Étape');
 
-      const used = await tx.workDay.count({ where: { phaseId } });
+      // Toute donnee rattachee a l'etape (jours, depenses, journal, stock...) empeche sa suppression : on la desactive.
+      const where = { phaseId };
+      const counts = await Promise.all([
+        tx.workDay.count({ where }),
+        tx.expense.count({ where }),
+        tx.siteLog.count({ where }),
+        tx.snag.count({ where }),
+        tx.reception.count({ where }),
+        tx.changeOrder.count({ where }),
+        tx.quoteLot.count({ where }),
+        tx.contract.count({ where }),
+        tx.purchaseOrder.count({ where }),
+        tx.stockMovement.count({ where }),
+        tx.workerPresence.count({ where }),
+        tx.phaseProgressUpdate.count({ where }),
+      ]);
+      const used = counts.reduce((sum, n) => sum + n, 0);
       if (used > 0) {
-        throw AppException.conflict('PHASE_IN_USE', `Cette étape est utilisée par ${used} jour(s) : désactivez-la plutôt que de la supprimer.`);
+        throw AppException.conflict('PHASE_IN_USE', `Cette étape est utilisée par ${used} élément(s) (jours, dépenses, journal...) : désactivez-la plutôt que de la supprimer.`);
       }
 
       await tx.projectPhase.delete({ where: { id: phaseId } });

@@ -12,10 +12,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             retry: (failureCount, error) => {
-              if (error instanceof ApiError && [401, 403, 404, 422].includes(error.status)) return false;
+              if (error instanceof ApiError && [0, 401, 403, 404, 422].includes(error.status)) return false;
               return failureCount < 2;
             },
             staleTime: 30_000,
+            // Hors ligne, la requete est tentee quand meme : le service worker repond avec la derniere copie connue.
+            networkMode: 'offlineFirst',
             refetchOnWindowFocus: false,
           },
           mutations: { retry: false },

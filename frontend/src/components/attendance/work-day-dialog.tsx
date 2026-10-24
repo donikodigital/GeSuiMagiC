@@ -8,8 +8,11 @@ import { Button } from '@/components/ui/button';
 import { FormField, Input, Select, Textarea } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { dayLabel } from '@/lib/month';
-import { useClearWorkDay, useSaveWorkDay } from '@/hooks/use-attendance';
-import type { ProjectPhase, WorkDay } from '@/types/models';
+import { useClearWorkDay } from '@/hooks/use-attendance';
+import { useQueuedSubmit } from '@/hooks/use-queued-submit';
+import { getPosition } from '@/lib/geo';
+import { stopReasonLabels } from '@/lib/site-format';
+import type { ProjectPhase, UpsertWorkDayPayload, WorkDay } from '@/types/models';
 
 interface WorkDayDialogProps {
   open: boolean;
@@ -23,13 +26,15 @@ interface WorkDayDialogProps {
 }
 
 export function WorkDayDialog({ open, onClose, projectId, date, entry, phases, lockedReason }: WorkDayDialogProps) {
-  const save = useSaveWorkDay(projectId);
+  const { submit: queuedSubmit, pending: saving } = useQueuedSubmit(projectId);
   const clear = useClearWorkDay(projectId);
 
   const [isWorked, setIsWorked] = React.useState(true);
   const [workers, setWorkers] = React.useState('');
   const [phaseId, setPhaseId] = React.useState('');
   const [note, setNote] = React.useState('');
+  const [stopReason, setStopReason] = React.useState<NonNullable<UpsertWorkDayPayload['stopReason']> | ''>('');
+  const [locating, setLocating] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -37,6 +42,7 @@ export function WorkDayDialog({ open, onClose, projectId, date, entry, phases, l
     setWorkers(entry?.isWorked ? String(entry.workersCount) : '');
     setPhaseId(entry?.phaseId ?? '');
     setNote(entry?.note ?? '');
+    setStopReason(entry && !entry.isWorked ? (entry.stopReason ?? '') : '');
   }, [open, entry, date]);
 
   if (!date) return null;
@@ -50,11 +56,24 @@ export function WorkDayDialog({ open, onClose, projectId, date, entry, phases, l
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (readOnly || !valid) return;
-    await save.mutateAsync({
-      date,
-      payload: isWorked ? { isWorked: true, workersCount: workersNumber, phaseId, note: note.trim() || undefined } : { isWorked: false, note: note.trim() || undefined },
-    });
-    onClose();
+    // La position sert a verifier la presence sur le chantier ; elle n'est jamais bloquante.
+    setLocating(true);
+    const position = isWorked ? await getPosition() : null;
+    setLocating(false);
+    const payload: UpsertWorkDayPayload = isWorked
+      ? { isWorked: true, workersCount: workersNumber, phaseId, note: note.trim() || undefined, latitude: position?.latitude, longitude: position?.longitude }
+      : { isWorked: false, note: note.trim() || undefined, stopReason: stopReason || undefined };
+    const result = await queuedSubmit(
+      {
+        kind: 'work-day',
+        label: `Journée du ${date} : ${isWorked ? `${workersNumber} ouvrier(s)` : 'non travaillée'}`,
+        method: 'PUT',
+        path: `/projects/${projectId}/work-days/${date}`,
+        body: payload,
+      },
+      'Journée enregistrée.',
+    );
+    if (result) onClose();
   };
 
   const remove = async () => {
@@ -127,7 +146,22 @@ export function WorkDayDialog({ open, onClose, projectId, date, entry, phases, l
           </>
         )}
 
-        <FormField label={isWorked ? 'Note (facultatif)' : 'Raison (facultatif)'} htmlFor="wd-note">
+        {!isWorked && (
+          <FormField label="Cause de l'arrêt" htmlFor="wd-stop" hint="Sert à expliquer les retards dans le rapport du mois.">
+            <Select id="wd-stop" value={stopReason} onChange={(e) => setStopReason(e.target.value as typeof stopReason)} disabled={readOnly}>
+              <option value="">Non précisée</option>
+              {(Object.keys(stopReasonLabels) as (keyof typeof stopReasonLabels)[])
+                .filter((k) => k !== 'UNSPECIFIED')
+                .map((k) => (
+                  <option key={k} value={k}>
+                    {stopReasonLabels[k]}
+                  </option>
+                ))}
+            </Select>
+          </FormField>
+        )}
+
+        <FormField label={isWorked ? 'Note (facultatif)' : 'Précision (facultatif)'} htmlFor="wd-note">
           <Textarea
             id="wd-note"
             rows={2}
@@ -152,7 +186,7 @@ export function WorkDayDialog({ open, onClose, projectId, date, entry, phases, l
               {readOnly ? 'Fermer' : 'Annuler'}
             </Button>
             {!readOnly && (
-              <Button type="submit" loading={save.isPending} disabled={!valid}>
+              <Button type="submit" loading={saving || locating} disabled={!valid}>
                 Enregistrer
               </Button>
             )}

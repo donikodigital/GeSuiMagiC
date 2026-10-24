@@ -155,7 +155,7 @@ Les entrees deja presentes avant la migration restent **globales**.
 ## Tests
 
 ```bash
-npm test              # tests unitaires + test de fumee de l'application (~390 tests)
+npm test              # tests unitaires + test de fumee de l'application (~530 tests)
 npx tsc --noEmit      # verification des types
 npm run test:e2e       # squelette e2e (a completer avec une base Postgres de test)
 ```
@@ -176,9 +176,44 @@ ait ete execute.
 - **Proxy** : derriere un reverse proxy, definir `TRUST_PROXY` (voir `.env.example`)
   pour que le rate-limit et l'audit voient la vraie IP.
 
-## Ce qui n'est PAS encore dans cette livraison (V2/V3 du cahier des charges)
+## Suivi de chantier BTP
 
-- Journal de chantier avec photos horodatees (section 33)
-- Etapes de progression du chantier avec dates/photos (section 60)
-- Paiement Mobile Money (Orange Money / MTN), signature electronique, OCR de factures, IA (sections 80-81)
-- Application mobile native
+Fonctions (toutes sous `/projects/:projectId/...`, controle d'acces par fonction sur le chantier) :
+
+| Domaine | Ressources |
+|---|---|
+| Cout et avancement par etape | `phases` (budget, planning), `phase-costs`, `progress` (avancement valide par un conducteur de travaux / architecte / client), `planning` (retards, raisons d'arret) |
+| Journal de chantier | `site-logs` (meteo, effectifs, incidents, photos horodatees) |
+| Materiaux | `purchase-orders`, `deliveries`, `stock` (articles, mouvements, consommation par etape, pertes) |
+| Ouvriers | `workers`, `worker-presences`, `workers/:id/advances`, `pay-runs` (paie par periode, marche a la tache, avances) |
+| Devis et sous-traitance | `suppliers`, `quote-lots` (metre, devis, comparaison, attribution), `contracts` (situations de travaux, retenue de garantie, acomptes, paiements) |
+| Avenants | `change-orders` (valides par le client, impact budget et delai) |
+| Qualite | `snags` (reserves), `receptions` (PV de reception, PDF) |
+| Documents | `documents` reglementaires avec alertes d'expiration, `monthly-report` (+ PDF) |
+| Anti-fraude | justificatif obligatoire au-dessus d'un seuil, validation technique prealable, geolocalisation des saisies, rejeu hors ligne sans doublon (`clientRef`) |
+| Devises | depots en devise etrangere : montant envoye, taux, frais, taux reel moyen (`deposits/currency-summary`) |
+| Messages | WhatsApp / SMS via Twilio (`/notifications/preferences`) |
+
+Regles a connaitre :
+
+- Fonctions sur un chantier : `SUPERVISOR` (saisie), `SITE_MANAGER` (conducteur de travaux), `ARCHITECT`, en plus du client et du superadmin. L'architecte ne depense pas et ne recoit pas de depot.
+- Un paiement de marche ou une paie cree toujours une **depense** : les regles de justificatif, de validation technique et de validation du client s'appliquent donc a tout l'argent qui sort.
+- Un avenant approuve ajoute son surcout au budget et ses jours a la date de fin (l'annulation par le superadmin les retire).
+- Les saisies de terrain portent un `clientRef` : un renvoi apres coupure reseau ne cree jamais de doublon.
+
+### Taches planifiees
+
+`GET /api/cron/daily` (header `Authorization: Bearer <CRON_SECRET>`) envoie le rapport mensuel au client, les alertes
+d'expiration de documents (60 / 30 / 14 / 7 jours et a l'echeance) et les rappels. Sur Vercel, ajouter dans
+`backend/vercel.json` : `{"crons":[{"path":"/api/cron/daily","schedule":"0 6 * * *"}]}` et definir `CRON_SECRET`.
+
+### Variables d'environnement ajoutees
+
+`CRON_SECRET` (obligatoire pour le planificateur), `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`,
+`TWILIO_SMS_FROM`, `MESSAGING_TIMEOUT_MS` (facultatives : sans Twilio, emails et notifications dans l'application seulement).
+
+## Ce qui n'est PAS encore dans cette livraison
+
+- Paiement Mobile Money (Orange Money / MTN), signature electronique, OCR de factures, IA
+- Application mobile native (le frontend est une application web installable, utilisable hors ligne)
+- Les PDF generes (rapport mensuel, PV de reception) sont en texte seul, sans logo ni photos

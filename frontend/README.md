@@ -40,8 +40,9 @@ src/
     (app)/              coquille authentifiee (sidebar + topbar)
       dashboard/         tableau de bord (branche par role)
       projects/           liste, creation, [id]/ avec sous-onglets :
-                            apercu, depots, depenses, budgets, documents,
-                            superviseurs, anomalies, reglages
+                            apercu, depots, depenses, budgets, avancement, journal,
+                            achats, ouvriers, sous-traitance, qualite, documents,
+                            presences, alimentation, superviseurs, anomalies, reglages
       clients/             gestion clients (superadmin)
       supervisors/         gestion superviseurs (client)
       materials/           catalogue (categories/materiaux/unites : global = superadmin,
@@ -56,7 +57,8 @@ src/
     dashboard/            un composant par role
   hooks/                 React Query hooks (use-projects, use-deposits, use-expenses...)
   services/               un fichier par ressource API, miroir des endpoints backend
-  lib/                   api-client (fetch + refresh auto), auth-store (zustand), format.ts
+  lib/                   api-client (fetch + refresh auto), auth-store (zustand), format.ts,
+                          offline/ (file d'attente IndexedDB + service worker), geo.ts, site-access.ts
   types/models.ts        miroir des enums/entites Prisma du backend
 ```
 
@@ -78,8 +80,13 @@ montant depasse le seuil de validation automatique du projet, mais
 conformement a la regle definie cote backend, le solde peut devenir
 negatif et reste visible tel quel sur le tableau de bord.
 
-## Ce qui n'est pas encore couvert (V2/V3)
+## Fonctionnement hors ligne
 
-Memes limites que le backend : journal photo de chantier, etapes de
-progression, Mobile Money, IA. Voir le
-README du backend pour le detail.
+L'application est installable (PWA). Sans reseau, les saisies de terrain (depenses, journal, avancement, reserves,
+livraisons, presences, paiements de marche) et leurs photos sont gardees sur l'appareil (IndexedDB) puis envoyees
+automatiquement au retour du reseau, sans doublon (`clientRef`). Le panneau « Saisies hors ligne » permet de
+corriger ou d'abandonner une saisie refusee par le serveur. Le cache de l'API est vide a la connexion et a la deconnexion.
+
+## Ce qui n'est pas encore couvert
+
+Paiement Mobile Money, signature electronique, OCR de factures, IA. Voir le README du backend pour le detail.

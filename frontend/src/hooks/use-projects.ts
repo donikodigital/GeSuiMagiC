@@ -3,7 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { projectsService, type CreateProjectPayload, type ProjectFilters } from '@/services/projects.service';
+import { projectsService, type CreateProjectPayload, type ProjectFilters, type SupervisorPosition } from '@/services/projects.service';
 import type { ProjectStatus } from '@/types/models';
 import { ApiError } from '@/lib/api-client';
 
@@ -89,12 +89,24 @@ export function useUpdateProjectFinancials(projectId: string) {
 export function useAssignSupervisor(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (supervisorId: string) => projectsService.assignSupervisor(projectId, supervisorId),
+    mutationFn: (input: { supervisorId: string; position?: SupervisorPosition }) => projectsService.assignSupervisor(projectId, input.supervisorId, input.position),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
       toast.success('Superviseur affecte au projet.');
     },
     onError: (error) => handleError(error, "Impossible d'affecter ce superviseur."),
+  });
+}
+
+export function useUpdateSupervisorPosition(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { supervisorId: string; position: SupervisorPosition }) => projectsService.updateSupervisorPosition(projectId, input.supervisorId, input.position),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      toast.success('Fonction mise à jour.');
+    },
+    onError: (error) => handleError(error, 'Impossible de modifier la fonction.'),
   });
 }
 

@@ -28,6 +28,11 @@ describe('ExpensesService', () => {
     budget: D(500_000_000),
     autoApproveExpenses: true,
     expenseApprovalThreshold: D(5_000_000),
+    receiptRequiredAbove: null as Prisma.Decimal | null,
+    technicalReviewAbove: null as Prisma.Decimal | null,
+    siteLatitude: null as Prisma.Decimal | null,
+    siteLongitude: null as Prisma.Decimal | null,
+    geoFenceMeters: 500,
   };
 
   const supervisor = { userId: 'user-supervisor-1', email: 's@example.com', role: 'SUPERVISOR' as const, supervisorProfileId: 'sup-1' };
@@ -51,15 +56,24 @@ describe('ExpensesService', () => {
     amountPaidToSupplier: D(10_000_000),
     isArchived: false,
     project: { ...baseProject },
+    techReviewStatus: 'NOT_REQUIRED',
+    attachments: [],
     supervisor: { userId: 'user-supervisor-1' },
     ...overrides,
   });
 
-  function build(options: { project?: Record<string, unknown>; windowHours?: number } = {}) {
+  function build(
+    options: { project?: Record<string, unknown>; windowHours?: number; position?: string; reviewers?: unknown[]; receipts?: number } = {},
+  ) {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     const prisma: any = {
       project: { findUnique: jest.fn().mockResolvedValue({ ...baseProject, ...options.project }) },
+      projectSupervisor: {
+        findFirst: jest.fn().mockResolvedValue({ position: options.position ?? 'SUPERVISOR' }),
+        findMany: jest.fn().mockResolvedValue(options.reviewers ?? []),
+      },
+      attachment: { count: jest.fn().mockResolvedValue(options.receipts ?? 0) },
       expenseCategory: { findUnique: jest.fn().mockResolvedValue({ id: 'cat-1', name: 'Ciment', isActive: true, ownerClientId: null }) },
       material: { findUnique: jest.fn() },
       clientProfile: { findUnique: jest.fn().mockResolvedValue({ userId: 'user-client-1', firstName: 'Mamadou' }) },
@@ -88,8 +102,10 @@ describe('ExpensesService', () => {
     const settings: Record<string, unknown> = { frontendUrl: 'http://localhost:3000', 'expenses.cumulativeWindowHours': options.windowHours ?? 0 };
     const config = { get: jest.fn((key: string) => settings[key]) };
 
-    const service = new ExpensesService(prisma, wallets as any, audit as any, notifications as any, budgets as any, config as any);
-    return { service, prisma, wallets, audit, notifications, budgets };
+    const siteNotifier = { toReviewers: jest.fn().mockResolvedValue(undefined), toClient: jest.fn().mockResolvedValue(undefined) };
+
+    const service = new ExpensesService(prisma, wallets as any, audit as any, notifications as any, budgets as any, config as any, siteNotifier as any);
+    return { service, prisma, wallets, audit, notifications, budgets, siteNotifier };
   }
 
   const dto = (overrides: Record<string, unknown> = {}) => ({
@@ -274,6 +290,181 @@ describe('ExpensesService', () => {
 
         prisma.material.findUnique.mockResolvedValue(material);
         await expect(service.create('project-1', dto({ materialId: 'mat-1' }) as any, supervisor)).resolves.toBeDefined();
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  describe('controles anti-fraude et rattachements', () => {
+    it("exige la confirmation du client pour une depense sans justificatif au-dessus du seuil de justificatif", async () => {
+      const { service, prisma } = build({ project: { receiptRequiredAbove: D(1_000_000) } });
+
+      await service.create('project-1', dto({ quantity: 1, unitPrice: 2_000_000 }) as any, supervisor);
+
+      const data = prisma.expense.create.mock.calls[0][0].data;
+      expect(data.status).toBe('PENDING');
+    });
+
+    it("ne valide pas automatiquement meme sous le seuil client quand un justificatif est obligatoire", async () => {
+      const { service, prisma, wallets } = build({ project: { receiptRequiredAbove: D(100) } });
+
+      await service.create('project-1', dto({ quantity: 1, unitPrice: 500 }) as any, supervisor);
+
+      expect(prisma.expense.create.mock.calls[0][0].data.status).toBe('PENDING');
+      expect(wallets.recompute).not.toHaveBeenCalled();
+    });
+
+    it("refuse la validation du client tant que le justificatif obligatoire n'est pas joint", async () => {
+      const { service, prisma } = build({ project: { receiptRequiredAbove: D(1_000_000) }, receipts: 0 });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ project: { ...baseProject, receiptRequiredAbove: D(1_000_000) } }));
+
+      await expect(service.approve('expense-1', client)).rejects.toMatchObject({ code: 'RECEIPT_REQUIRED' });
+      expect(prisma.expense.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('accepte la validation du client une fois le justificatif joint', async () => {
+      const { service, prisma } = build({ receipts: 1 });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ project: { ...baseProject, receiptRequiredAbove: D(1_000_000) } }));
+
+      await service.approve('expense-1', client);
+
+      expect(prisma.expense.updateMany).toHaveBeenCalled();
+    });
+
+    it('place la depense en validation technique et previent les responsables quand un conducteur de travaux est affecte', async () => {
+      const { service, prisma, siteNotifier } = build({
+        project: { technicalReviewAbove: D(1_000_000) },
+        reviewers: [{ supervisor: { userId: 'user-site-manager' } }],
+      });
+
+      await service.create('project-1', dto({ quantity: 1, unitPrice: 2_000_000 }) as any, supervisor);
+
+      const data = prisma.expense.create.mock.calls[0][0].data;
+      expect(data.techReviewStatus).toBe('PENDING');
+      expect(data.status).toBe('PENDING');
+      expect(siteNotifier.toReviewers).toHaveBeenCalledWith('project-1', expect.objectContaining({ type: 'TECH_REVIEW_REQUESTED' }), supervisor.userId);
+    });
+
+    it("n'impose pas de validation technique quand aucun responsable technique n'est affecte au projet", async () => {
+      const { service, prisma } = build({ project: { technicalReviewAbove: D(1_000_000), autoApproveExpenses: true, expenseApprovalThreshold: D(50_000_000) }, reviewers: [] });
+
+      await service.create('project-1', dto({ quantity: 1, unitPrice: 2_000_000 }) as any, supervisor);
+
+      expect(prisma.expense.create.mock.calls[0][0].data.techReviewStatus).toBe('NOT_REQUIRED');
+    });
+
+    it('bloque la validation du client tant que la validation technique est en attente', async () => {
+      const { service, prisma } = build();
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ techReviewStatus: 'PENDING' }));
+
+      await expect(service.approve('expense-1', client)).rejects.toMatchObject({ code: 'TECH_REVIEW_PENDING' });
+    });
+
+    it("interdit a l'architecte de saisir une depense", async () => {
+      const { service, prisma } = build({ position: 'ARCHITECT' });
+
+      await expect(service.create('project-1', dto() as any, supervisor)).rejects.toMatchObject({ code: 'ARCHITECT_CANNOT_SPEND' });
+      expect(prisma.expense.create).not.toHaveBeenCalled();
+    });
+
+    it('signale une saisie hors du rayon du chantier sans la bloquer', async () => {
+      const { service, prisma, siteNotifier } = build({ project: { siteLatitude: D('9.5370'), siteLongitude: D('-13.6785'), geoFenceMeters: 300 } });
+
+      await service.create('project-1', dto({ latitude: 9.6, longitude: -13.7 }) as any, supervisor);
+
+      const data = prisma.expense.create.mock.calls[0][0].data;
+      expect(data.isOffSite).toBe(true);
+      expect(data.distanceMeters).toBeGreaterThan(300);
+      expect(siteNotifier.toClient).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ type: 'LOCATION_ALERT' }));
+    });
+
+    it('ne signale rien quand la position est dans le rayon ou absente', async () => {
+      const { service, prisma, siteNotifier } = build({ project: { siteLatitude: D('9.5370'), siteLongitude: D('-13.6785'), geoFenceMeters: 300 } });
+
+      await service.create('project-1', dto({ latitude: 9.5371, longitude: -13.6786 }) as any, supervisor);
+      await service.create('project-1', dto() as any, supervisor);
+
+      expect(prisma.expense.create.mock.calls.every((call: any) => call[0].data.isOffSite === false)).toBe(true);
+      expect(siteNotifier.toClient).not.toHaveBeenCalled();
+    });
+
+    it("rejoue une saisie hors ligne sans creer de doublon (meme clientRef)", async () => {
+      const { service, prisma } = build();
+      prisma.expense.findFirst = jest.fn().mockResolvedValue({ id: 'expense-1' });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow());
+
+      await service.create('project-1', dto({ clientRef: 'abcd-1234-efgh' }) as any, supervisor);
+
+      expect(prisma.expense.create).not.toHaveBeenCalled();
+    });
+
+    it("refuse une etape d'un autre projet ou inactive", async () => {
+      const { service, prisma } = build();
+      prisma.projectPhase = { findFirst: jest.fn().mockResolvedValue(null) };
+
+      await expect(service.create('project-1', dto({ phaseId: 'phase-x' }) as any, supervisor)).rejects.toMatchObject({
+        code: 'INVALID_PHASE',
+      });
+    });
+
+    it("refuse un fournisseur d'un autre client", async () => {
+      const { service, prisma } = build();
+      prisma.supplier = { findFirst: jest.fn().mockResolvedValue(null) };
+
+      await expect(service.create('project-1', dto({ supplierId: 'supplier-x' }) as any, supervisor)).rejects.toMatchObject({
+        code: 'INVALID_SUPPLIER',
+      });
+      expect(prisma.supplier.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'supplier-x', ownerClientId: 'client-1' } }));
+    });
+  });
+
+  describe('validation technique', () => {
+    const reviewerManager = { userId: 'user-site-manager', email: 'm@example.com', role: 'SUPERVISOR' as const, supervisorProfileId: 'sup-manager' };
+
+    it('approuve la depense sans la valider definitivement (le client decide ensuite)', async () => {
+      const { service, prisma } = build({ position: 'SITE_MANAGER' });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ techReviewStatus: 'PENDING' }));
+
+      await service.technicalReview('expense-1', { decision: 'APPROVED' }, reviewerManager);
+
+      const call = prisma.expense.updateMany.mock.calls[0][0];
+      expect(call.data.techReviewStatus).toBe('APPROVED');
+      expect(call.data.status).toBeUndefined();
+    });
+
+    it('refuse la depense avec un motif obligatoire', async () => {
+      const { service, prisma } = build({ position: 'SITE_MANAGER' });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ techReviewStatus: 'PENDING' }));
+
+      await expect(service.technicalReview('expense-1', { decision: 'REJECTED' }, reviewerManager)).rejects.toMatchObject({
+        code: 'NOTE_REQUIRED',
+      });
+      await service.technicalReview('expense-1', { decision: 'REJECTED', note: 'Prix trop eleve' }, reviewerManager);
+      expect(prisma.expense.updateMany.mock.calls[0][0].data.status).toBe('REJECTED');
+    });
+
+    it("interdit a l'auteur de valider techniquement sa propre depense", async () => {
+      const { service, prisma } = build({ position: 'SITE_MANAGER' });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ techReviewStatus: 'PENDING', supervisorId: 'sup-manager' }));
+
+      await expect(service.technicalReview('expense-1', { decision: 'APPROVED' }, reviewerManager)).rejects.toMatchObject({
+        code: 'SELF_REVIEW',
+      });
+    });
+
+    it("refuse un superviseur simple (ni conducteur de travaux ni architecte)", async () => {
+      const { service, prisma } = build({ position: 'SUPERVISOR' });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ techReviewStatus: 'PENDING' }));
+
+      await expect(service.technicalReview('expense-1', { decision: 'APPROVED' }, otherSupervisor)).rejects.toBeDefined();
+    });
+
+    it("refuse une depense qui n'attend pas de validation technique", async () => {
+      const { service, prisma } = build({ position: 'SITE_MANAGER' });
+      prisma.expense.findUnique.mockResolvedValue(expenseRow({ techReviewStatus: 'NOT_REQUIRED' }));
+
+      await expect(service.technicalReview('expense-1', { decision: 'APPROVED' }, admin)).rejects.toMatchObject({
+        code: 'TECH_REVIEW_NOT_PENDING',
       });
     });
   });

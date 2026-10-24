@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { authService } from '@/services/auth.service';
 import { useAuthStore } from '@/lib/auth-store';
 import { ApiError } from '@/lib/api-client';
+import { clearOfflineCaches } from '@/lib/offline/sw';
 
 export function useAuth() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export function useAuth() {
       // Cache vide : si la session precedente a expire sans deconnexion explicite, les donnees
       // de l'ancien utilisateur ne doivent pas etre affichees au suivant.
       queryClient.clear();
+      void clearOfflineCaches();
       setSession(data);
       router.push('/dashboard');
     },
@@ -36,6 +38,7 @@ export function useAuth() {
     }
     clear();
     queryClient.clear();
+    void clearOfflineCaches();
     router.push('/login');
   };
 

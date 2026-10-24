@@ -12,7 +12,7 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { UpdateProjectFinancialsDto } from './dto/update-project-financials.dto';
 import { ProjectQueryDto } from './dto/project-query.dto';
 import { UpdateProjectStatusDto } from './dto/update-project-status.dto';
-import { AssignSupervisorDto } from './dto/assign-supervisor.dto';
+import { AssignSupervisorDto, UpdateSupervisorPositionDto } from './dto/assign-supervisor.dto';
 
 @Controller('projects')
 export class ProjectsController {
@@ -37,8 +37,8 @@ export class ProjectsController {
   @Get(':id')
   @UseGuards(ProjectAccessGuard)
   @ProjectParam('id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.findOne(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.projectsService.findOne(id, actor);
   }
 
   @Get(':id/financial-summary')
@@ -84,7 +84,20 @@ export class ProjectsController {
   @ProjectParam('id')
   @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
   async assignSupervisor(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignSupervisorDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.projectsService.assignSupervisor(id, dto.supervisorId, actor);
+    return this.projectsService.assignSupervisor(id, dto.supervisorId, actor, dto.position);
+  }
+
+  @Patch(':id/supervisors/:supervisorId')
+  @UseGuards(ProjectAccessGuard)
+  @ProjectParam('id')
+  @Roles(UserRole.CLIENT, UserRole.SUPERADMIN)
+  async updateSupervisorPosition(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('supervisorId', ParseUUIDPipe) supervisorId: string,
+    @Body() dto: UpdateSupervisorPositionDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.projectsService.updateSupervisorPosition(id, supervisorId, dto.position, actor);
   }
 
   @Delete(':id/supervisors/:supervisorId')

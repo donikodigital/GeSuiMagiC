@@ -1,6 +1,6 @@
 //backend/src/attachments/dto/create-attachment.dto.ts
-import { IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, MinLength } from 'class-validator';
-import { ATTACHMENT_ABSOLUTE_MAX_BYTES, ATTACHMENT_KINDS, ATTACHMENT_MIME_TYPES } from '../attachment.constants';
+import { IsDateString, IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, MinLength } from 'class-validator';
+import { ATTACHMENT_ABSOLUTE_MAX_BYTES, ATTACHMENT_ENTITY_TYPES, ATTACHMENT_KINDS, ATTACHMENT_MIME_TYPES } from '../attachment.constants';
 
 /** Section 32 : enregistre les metadonnees d'un fichier deja televerse sur le stockage objet. */
 export class CreateAttachmentDto {
@@ -23,4 +23,15 @@ export class CreateAttachmentDto {
   @IsOptional() @IsUUID() projectId?: string;
   @IsOptional() @IsUUID() depositId?: string;
   @IsOptional() @IsUUID() expenseId?: string;
+
+  /** Autre objet du chantier (journal, reserve, livraison...) : exige projectId et entityId. */
+  @IsOptional() @IsIn(ATTACHMENT_ENTITY_TYPES as unknown as string[])
+  entityType?: string;
+
+  @IsOptional() @IsUUID()
+  entityId?: string;
+
+  /** Instant de la prise de vue (ISO 8601), fourni par l'appareil. Jamais dans le futur. */
+  @IsOptional() @IsDateString()
+  capturedAt?: string;
 }

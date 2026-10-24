@@ -1,15 +1,7 @@
-// frontend/src/app/(app)/projects/[id]/layout.tsx - v1.4
-// v1.4 : onglets "Presences" (calendrier des jours travailles) et "Alimentation" (suivi des repas des ouvriers).
-// Remplacement de la barre d'onglets horizontale par une grille de cartes
-// cliquables sur mobile uniquement, via <ProjectTabCards>. La barre
-// desktop d'origine est conservee a l'identique, simplement masquee sous
-// sm: (hidden sm:block) au lieu d'etre toujours visible - bascule geree
-// en pur CSS/Tailwind, sans detection JS de device, comme le reste du
-// fichier (cf. les classes sm:flex-row / sm:text-2xl plus bas). Chaque
-// onglet porte desormais une icone (reprises des memes icones que la
-// page Apercu : ArrowDownToLine/ArrowUpFromLine/Wallet) pour la grille
-// mobile. Aucun changement sur le gating par role, l'en-tete navy, les
-// telechargements PDF/Excel, ou le garde de chargement.
+//frontend/src/app/(app)/projects/[id]/layout.tsx
+// Barre d'onglets du projet : suivi financier, puis suivi de chantier (avancement, journal, achats, ouvriers,
+// sous-traitance, qualite), puis documents, presences, repas et administration. Grille de cartes sur mobile,
+// onglets qui passent a la ligne sur ordinateur (jamais de defilement horizontal).
 
 'use client';
 
@@ -29,6 +21,12 @@ import {
   Settings,
   CalendarDays,
   UtensilsCrossed,
+  TrendingUp,
+  BookOpenText,
+  PackageOpen,
+  HardHat,
+  Handshake,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useProject } from '@/hooks/use-projects';
 import { useAuth } from '@/hooks/use-auth';
@@ -56,6 +54,12 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
     { label: 'Dépôts', href: `${base}/deposits`, icon: ArrowDownToLine },
     { label: 'Dépenses', href: `${base}/expenses`, icon: ArrowUpFromLine },
     { label: 'Budgets', href: `${base}/budgets`, icon: Wallet },
+    { label: 'Avancement', href: `${base}/progress`, icon: TrendingUp },
+    { label: 'Journal', href: `${base}/journal`, icon: BookOpenText },
+    { label: 'Achats', href: `${base}/purchasing`, icon: PackageOpen },
+    { label: 'Ouvriers', href: `${base}/workforce`, icon: HardHat },
+    { label: 'Sous-traitance', href: `${base}/subcontracting`, icon: Handshake },
+    { label: 'Qualité', href: `${base}/quality`, icon: ClipboardCheck },
     { label: 'Documents', href: `${base}/documents`, icon: FolderOpen },
     { label: 'Présences', href: `${base}/attendance`, icon: CalendarDays },
     { label: 'Alimentation', href: `${base}/meals`, icon: UtensilsCrossed },
@@ -140,8 +144,8 @@ export default function ProjectDetailLayout({ children }: { children: React.Reac
 
       <ProjectTabCards tabs={tabsWithActive} />
 
-      <div className="hidden sm:block mb-6 overflow-x-auto border-b border-concrete">
-        <nav className="flex gap-1 whitespace-nowrap">
+      <div className="mb-6 hidden border-b border-concrete sm:block">
+        <nav className="flex flex-wrap gap-x-1">
           {tabsWithActive.map((tab) => (
             <Link
               key={tab.href}

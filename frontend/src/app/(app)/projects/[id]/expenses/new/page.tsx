@@ -1,11 +1,6 @@
-// ============================================================================
-// app/(app)/projects/[id]/expenses/new/page.tsx - v2.1
-// Reference facture generee automatiquement (7 caracteres, lettres
-// majuscules + chiffres, sans caracteres ambigus 0/O/1/I/L) des le
-// chargement du formulaire, avec un bouton pour en regenerer une autre.
-// Le champ reste librement modifiable si le superviseur veut y mettre la
-// vraie reference du justificatif papier. Reste du fichier inchange.
-// ============================================================================
+//frontend/src/app/(app)/projects/[id]/expenses/new/page.tsx
+// Nouvelle depense : reference facture generee automatiquement, etape et fournisseur de l'annuaire, photo du recu,
+// position de l'appareil (controle de presence) et saisie hors ligne (envoyee au retour du reseau, sans doublon).
 
 'use client';
 
@@ -15,9 +10,10 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Layers, Calculator, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, Layers, Calculator, RefreshCw, Truck, ReceiptText } from 'lucide-react';
 import { toast } from 'sonner';
-import { useCreateExpense } from '@/hooks/use-expenses';
+import { useQueuedSubmit } from '@/hooks/use-queued-submit';
+import { useSuppliers } from '@/hooks/use-site';
 import { useCategories, useMaterials, useUnits } from '@/hooks/use-catalog';
 import { useProject } from '@/hooks/use-projects';
 import { catalogService } from '@/services/catalog.service';
@@ -28,6 +24,10 @@ import { FormField, Input, Select, Textarea } from '@/components/ui/input';
 import { formatMoney } from '@/lib/format';
 import { ApiError } from '@/lib/api-client';
 import { RequireRole } from '@/components/shared/require-role';
+import { PhaseSelect } from '@/components/site/phase-select';
+import { PhotoPicker, toOutboxFiles } from '@/components/site/photo-picker';
+import { getPosition, newClientRef } from '@/lib/geo';
+import type { Expense } from '@/types/models';
 
 const NEW_OPTION = '__new__';
 
@@ -66,13 +66,18 @@ function NewExpensePageContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const createExpense = useCreateExpense(params.id);
+  const { submit: submitExpense, pending: submitting } = useQueuedSubmit(params.id);
+  const { data: suppliers } = useSuppliers(params.id);
   const { data: project } = useProject(params.id);
   const { data: categories } = useCategories();
   const { data: units } = useUnits();
 
   const [newCategoryName, setNewCategoryName] = React.useState('');
   const [newMaterialName, setNewMaterialName] = React.useState('');
+  const [phaseId, setPhaseId] = React.useState('');
+  const [supplierId, setSupplierId] = React.useState('');
+  const [files, setFiles] = React.useState<File[]>([]);
+  const [locating, setLocating] = React.useState(false);
 
   const {
     register,
@@ -107,6 +112,9 @@ function NewExpensePageContent() {
   const threshold = project ? parseFloat(project.expenseApprovalThreshold) : undefined;
   const willRequireConfirmation = project && (!project.autoApproveExpenses || (threshold !== undefined && total > threshold));
 
+  const receiptThreshold = project?.receiptRequiredAbove ? parseFloat(project.receiptRequiredAbove) : null;
+  const receiptMissing = receiptThreshold !== null && total > receiptThreshold && files.length === 0;
+
   const newCategoryInvalid = categoryId === NEW_OPTION && !newCategoryName.trim();
   const newMaterialInvalid = materialId === NEW_OPTION && !newMaterialName.trim();
 
@@ -126,21 +134,46 @@ function NewExpensePageContent() {
         resolvedMaterialId = undefined;
       }
 
-      const expense = await createExpense.mutateAsync({
-        ...values,
-        categoryId: resolvedCategoryId,
-        materialId: resolvedMaterialId,
-        quantity: Number(values.quantity),
-        unitPrice: Number(values.unitPrice),
-        amountPaidToSupplier: values.paymentStatus === 'PARTIAL' ? Number(values.amountPaidToSupplier) : undefined,
-      });
-      router.push(`/projects/${params.id}/expenses/${expense.id}`);
+      // La position sert au controle de presence sur le chantier ; elle n'est jamais bloquante.
+      setLocating(true);
+      const position = await getPosition();
+      setLocating(false);
+
+      const quantityNumber = Number(values.quantity);
+      const unitPriceNumber = Number(values.unitPrice);
+      const result = await submitExpense<Expense>(
+        {
+          kind: 'expense',
+          label: `Dépense : ${values.label} (${formatMoney(quantityNumber * unitPriceNumber, project?.currency)})`,
+          method: 'POST',
+          path: `/projects/${params.id}/expenses`,
+          body: {
+            ...values,
+            date: values.date || undefined,
+            categoryId: resolvedCategoryId,
+            materialId: resolvedMaterialId,
+            quantity: quantityNumber,
+            unitPrice: unitPriceNumber,
+            amountPaidToSupplier: values.paymentStatus === 'PARTIAL' ? Number(values.amountPaidToSupplier) : undefined,
+            phaseId: phaseId || undefined,
+            supplierId: supplierId || undefined,
+            latitude: position?.latitude,
+            longitude: position?.longitude,
+            clientRef: newClientRef(),
+          },
+          files: toOutboxFiles(files, 'recu'),
+          attach: { mode: 'expense' },
+        },
+        'Dépense enregistrée.',
+      );
+      if (!result) return;
+      router.push(result.queued ? `/projects/${params.id}/expenses` : `/projects/${params.id}/expenses/${result.data.id}`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "L'enregistrement a echoué.");
     }
   };
 
-  const busy = createExpense.isPending || createCategoryMutation.isPending || createMaterialMutation.isPending;
+  const busy = submitting || locating || createCategoryMutation.isPending || createMaterialMutation.isPending;
 
   return (
     <div className="mx-auto max-w-lg">
@@ -293,7 +326,30 @@ function NewExpensePageContent() {
               <h3 className="font-display text-sm font-semibold text-ink-700">Fournisseur et paiement</h3>
             </div>
 
-            <FormField label="Fournisseur" htmlFor="supplier">
+            <FormField label="Étape du chantier" htmlFor="expense-phase" hint="Rattache la dépense à une étape pour suivre le coût réel de chaque étape.">
+              <PhaseSelect id="expense-phase" projectId={params.id} value={phaseId} onChange={setPhaseId} emptyLabel="Non rattachée" />
+            </FormField>
+
+            <FormField label="Fournisseur de l'annuaire" htmlFor="expense-supplier">
+              <Select
+                id="expense-supplier"
+                value={supplierId}
+                onChange={(e) => {
+                  setSupplierId(e.target.value);
+                  const chosen = suppliers?.find((x) => x.id === e.target.value);
+                  if (chosen) setValue('supplier', chosen.name);
+                }}
+              >
+                <option value="">Autre / non listé</option>
+                {(suppliers ?? []).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+
+            <FormField label="Nom du fournisseur" htmlFor="supplier">
               <Input id="supplier" {...register('supplier')} />
             </FormField>
 
@@ -330,6 +386,26 @@ function NewExpensePageContent() {
               <FormField label="Montant déjà versé au fournisseur" htmlFor="amountPaidToSupplier" required>
                 <Input id="amountPaidToSupplier" type="number" {...register('amountPaidToSupplier')} />
               </FormField>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-3">
+              <SectionIcon>
+                <ReceiptText className="h-4 w-4" />
+              </SectionIcon>
+              <h3 className="font-display text-sm font-semibold text-ink-700">Reçu ou facture</h3>
+            </div>
+            <PhotoPicker files={files} onChange={setFiles} max={4} label="Photo du reçu" />
+            {receiptMissing ? (
+              <div className="flex items-start gap-2 rounded-md border border-safety-200 bg-safety-50 px-3 py-2.5 text-sm text-safety-500">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>Au-dessus de {formatMoney(receiptThreshold ?? 0, project?.currency)}, le justificatif est obligatoire : sans reçu, la dépense ne pourra pas être validée.</span>
+              </div>
+            ) : (
+              <p className="text-xs text-ink-400">Sans réseau, la dépense et la photo sont gardées sur l&apos;appareil puis envoyées automatiquement.</p>
             )}
           </CardContent>
         </Card>

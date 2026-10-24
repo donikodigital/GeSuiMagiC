@@ -1,9 +1,6 @@
-// frontend/src/app/(app)/projects/[id]/deposits/[depositId]/page.tsx - v1.2
-// Ajout du bouton "Contacter le superadmin" (visible pour isClient), qui
-// ouvre ComposeMessageDialog directement depuis la page de detail, pre-
-// rempli avec relatedEntityType/relatedEntityId et un sujet reprenant le
-// montant/la date du depot - le client n'a plus a retaper le contexte
-// manuellement depuis /contact.
+//frontend/src/app/(app)/projects/[id]/deposits/[depositId]/page.tsx
+// Fiche depot : validation par le superviseur, correction, archivage, change (montant envoye, taux, frais)
+// et bouton "Contacter le superadmin" pour le client.
 
 'use client';
 
@@ -91,6 +88,19 @@ export default function DepositDetailPage() {
             {deposit.observation && <Field label="Observation" value={deposit.observation} full />}
             {deposit.rejectionReason && <Field label="Motif du réfus/suppression" value={deposit.rejectionReason} full />}
           </dl>
+
+          {deposit.originalAmount && deposit.originalCurrency && (
+            <div className="rounded-card border border-blueprint-100 bg-blueprint-50/50 px-4 py-3.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-blueprint-600">Envoi de l&apos;étranger</p>
+              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <Field label="Montant envoyé" value={`${formatMoney(deposit.originalAmount, deposit.originalCurrency)}`} />
+                <Field label="Taux appliqué" value={`1 ${deposit.originalCurrency} = ${Number(deposit.exchangeRate ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 4 })} ${deposit.currency}`} />
+                {deposit.transferFees && Number(deposit.transferFees) > 0 && <Field label="Frais de transfert" value={formatMoney(deposit.transferFees, deposit.originalCurrency)} />}
+                {deposit.foreign && <Field label="Taux réel (frais compris)" value={Number(deposit.foreign.effectiveRate).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} />}
+                {deposit.foreign && <Field label="Écart avec le taux annoncé" value={`${deposit.foreign.gapPercent > 0 ? '+' : ''}${deposit.foreign.gapPercent} %`} />}
+              </dl>
+            </div>
+          )}
 
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-400">Pièces jointes</p>
